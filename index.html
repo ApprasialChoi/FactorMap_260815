@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>그밖의요인 통계맵</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; font-family: 'Pretendard', 'Malgun Gothic', -apple-system, sans-serif; overflow: hidden; }
+
+    /* ===== 지도 ===== */
+    #map, #kakao-map { position: absolute; top: 0; right: 0; bottom: 0; left: 340px; width: calc(100% - 340px); }
+    #kakao-map { z-index: 0; }
+    #map { z-index: 1; background: transparent; }
+
+    /* ===== 사이드 패널 ===== */
+    #side-panel {
+        position: fixed; top: 0; left: 0; width: 340px; height: 100%;
+        background: #fff; z-index: 3000; display: flex; flex-direction: column;
+        box-shadow: 2px 0 12px rgba(0,0,0,0.08);
+    }
+    .panel-header { padding: 16px 20px 13px; background: linear-gradient(135deg, #1a365d, #2b6cb0); color: white; }
+    .panel-header h1 { font-size: 17px; font-weight: 700; }
+    .panel-header .subtitle { font-size: 11px; opacity: 0.85; margin-top: 2px; }
+    .panel-count { font-size: 12px; margin-top: 7px; font-weight: 600; }
+    .panel-count b { color: #fbd38d; font-size: 14px; }
+
+    #panel-scroll { flex: 1; overflow-y: auto; }
+    .filter-section { padding: 10px 16px; border-bottom: 1px solid #edf2f7; }
+    .filter-section > label { font-size: 11px; font-weight: 700; color: #718096; display: block; margin-bottom: 6px; }
+    .filter-section > label small { font-weight: 400; color: #a0aec0; }
+    .filter-row { display: flex; flex-wrap: wrap; gap: 4px; }
+    .chip {
+        padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+        cursor: pointer; border: 1.5px solid #e2e8f0; background: white; color: #4a5568;
+        transition: all 0.12s; user-select: none;
+    }
+    .chip:hover { border-color: #2b6cb0; }
+    .chip.active { color: white; border-color: transparent; background: #2b6cb0; }
+    .chip.c-type0.active { background: #7c3aed; }
+    .chip.c-type1.active { background: #0d9488; }
+    .chip.c-all.active { background: #4a5568; }
+
+    /* ===== 통계 ===== */
+    .stat-section { padding: 12px 16px; border-bottom: 1px solid #edf2f7; background: linear-gradient(180deg,#fafbff,#fff); }
+    .stat-title { font-size: 11px; font-weight: 700; color: #0051af; letter-spacing: .5px; margin-bottom: 8px; }
+    .rep-box {
+        display: flex; gap: 8px; margin-bottom: 10px;
+    }
+    .rep-card { flex: 1; background: #fff; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 8px 10px; text-align: center; }
+    .rep-card.hero { border-color: #0051af; background: #f0f7ff; }
+    .rep-card .k { font-size: 10px; color: #718096; font-weight: 600; }
+    .rep-card .v { font-size: 19px; font-weight: 800; color: #1a365d; margin-top: 1px; }
+    .rep-card.hero .v { color: #0051af; }
+    .rep-card .s { font-size: 9.5px; color: #a0aec0; }
+
+    table.stat-tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .stat-tbl th { background: #edf2f7; color: #4a5568; font-weight: 700; padding: 4px 6px; text-align: right; }
+    .stat-tbl th:first-child { text-align: left; }
+    .stat-tbl td { padding: 4px 6px; border-bottom: 1px solid #f1f5f9; text-align: right; font-variant-numeric: tabular-nums; }
+    .stat-tbl td:first-child { text-align: left; font-weight: 600; color: #4a5568; }
+    .stat-tbl tr.hl td { background: #f0f7ff; font-weight: 700; }
+    .stat-sub { font-size: 10px; color: #a0aec0; margin-top: 6px; line-height: 1.6; }
+
+    #histo { width: 100%; height: 110px; margin-top: 8px; background: #fff; border: 1px solid #edf2f7; border-radius: 8px; }
+
+    /* 리 목록 */
+    #ri-list { }
+    .ri-item { display: flex; align-items: center; padding: 7px 16px; border-bottom: 1px solid #f7fafc; cursor: pointer; font-size: 12px; }
+    .ri-item:hover { background: #f0f7ff; }
+    .ri-item.sel { background: #e6f0fd; }
+    .ri-item .nm { font-weight: 700; color: #2d3748; flex: 1; }
+    .ri-item .nm small { font-weight: 400; color: #a0aec0; margin-left: 4px; }
+    .ri-item .md { font-weight: 700; color: #0051af; width: 52px; text-align: right; }
+    .ri-item .ct { color: #718096; width: 58px; text-align: right; font-size: 11px; }
+    .empty-state { padding: 30px 20px; text-align: center; color: #a0aec0; font-size: 12px; }
+
+    /* 지도 라벨 */
+    .pill-wrap { background: none; border: none; }
+    .ri-pill {
+        display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+        background: #fff; border: 1.5px solid rgba(26,54,93,.25); border-radius: 14px;
+        padding: 2px 9px 2px 7px; font-size: 11px; font-weight: 700; color: #1a365d;
+        box-shadow: 0 2px 6px rgba(15,23,42,.18); cursor: pointer; font-family: inherit;
+    }
+    .ri-pill .dot { width: 9px; height: 9px; border-radius: 50%; }
+    .ri-pill small { font-weight: 600; color: #718096; font-size: 10px; }
+    .ri-pill.sel { outline: 2.5px solid #0051af; }
+    .leaflet-popup-content { font-size: 12px; line-height: 1.65; margin: 10px 13px; }
+    .leaflet-popup-content h4 { font-size: 13px; margin-bottom: 4px; color: #1a365d; }
+</style>
+</head>
+<body>
+
+<div id="side-panel">
+    <div class="panel-header">
+        <h1>📊 그밖의요인 통계맵</h1>
+        <div class="subtitle">개공비율(사례단가 ÷ 개별공시지가) 기반 · 해남·영암·무안</div>
+        <div class="panel-count">선택 <b id="cnt-sel">0</b>건 / 전체 <span id="cnt-all">0</span>건</div>
+    </div>
+    <div id="panel-scroll">
+        <div class="filter-section">
+            <label>사례 유형</label>
+            <div class="filter-row" id="f-type"></div>
+        </div>
+        <div class="filter-section">
+            <label>지역 <small>— 시군구 → 읍면 → 리 (리는 복수 선택)</small></label>
+            <div class="filter-row" id="f-sgg" style="margin-bottom:5px;"></div>
+            <div class="filter-row" id="f-emd" style="margin-bottom:5px;"></div>
+            <div class="filter-row" id="f-ri"></div>
+        </div>
+        <div class="filter-section">
+            <label>용도지역 <small>— 미선택 시 전체</small></label>
+            <div class="filter-row" id="f-zone"></div>
+        </div>
+        <div class="filter-section">
+            <label>이용상황 (지목 그룹)</label>
+            <div class="filter-row" id="f-use"></div>
+        </div>
+        <div class="filter-section">
+            <label>기간</label>
+            <div class="filter-row" id="f-year"></div>
+        </div>
+
+        <div class="stat-section">
+            <div class="stat-title">대푯값 (그밖의 요인 산정 참고)</div>
+            <div class="rep-box">
+                <div class="rep-card hero">
+                    <div class="k">정제 중위값</div>
+                    <div class="v" id="rep-med">–</div>
+                    <div class="s">IQR 1.5× 이상치 제거 후</div>
+                </div>
+                <div class="rep-card">
+                    <div class="k">절사평균 10%</div>
+                    <div class="v" id="rep-trim">–</div>
+                    <div class="s">상·하위 10% 제외</div>
+                </div>
+            </div>
+            <table class="stat-tbl">
+                <thead><tr><th>구분</th><th>n</th><th>평균</th><th>중위</th><th>표준편차</th></tr></thead>
+                <tbody id="stat-body"></tbody>
+            </table>
+            <canvas id="histo" width="600" height="220"></canvas>
+            <div class="stat-sub" id="stat-note"></div>
+        </div>
+
+        <div class="filter-section" style="border-bottom:none; padding-bottom:4px;">
+            <label>리별 정제 중위값 <small>— 클릭하면 해당 리만 선택</small></label>
+        </div>
+        <div id="ri-list"></div>
+    </div>
+</div>
+
+<div id="kakao-map"></div>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=231190ac1aca72ada0b739110d8a0eb4"></script>
+<script src="js/kakao_base.js"></script>
+<script src="data/records.js"></script>
+<script>
+(function () {
+    'use strict';
+    var META = window.FM_META, ROWS = window.FM_ROWS, CENTERS = window.FM_CENTERS;
+
+    // ───────── 상태 ─────────
+    var S = { types: {0: true, 1: true}, sgg: null, emd: null, ris: {}, zones: {}, uses: {}, yearMin: 0 };
+
+    // ───────── 통계 유틸 ─────────
+    function quantile(a, p) {           // a 오름차순
+        if (!a.length) return NaN;
+        var i = (a.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i);
+        return a[lo] + (a[hi] - a[lo]) * (i - lo);
+    }
+    function mean(a) { return a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : NaN; }
+    function stdev(a) {
+        if (a.length < 2) return NaN;
+        var m = mean(a);
+        return Math.sqrt(a.reduce(function (s, v) { return s + (v - m) * (v - m); }, 0) / (a.length - 1));
+    }
+    function stats(vals) {              // vals: 정렬 안 된 r 배열
+        var a = vals.slice().sort(function (x, y) { return x - y; });
+        var q1 = quantile(a, 0.25), q3 = quantile(a, 0.75), iqr = q3 - q1;
+        var lo = q1 - 1.5 * iqr, hi = q3 + 1.5 * iqr;
+        var ref = a.filter(function (v) { return v >= lo && v <= hi; });
+        var k = Math.floor(a.length * 0.1);
+        var trim = a.slice(k, a.length - k);
+        return {
+            raw: a, ref: ref, trim: trim,
+            q1: q1, q3: q3, fenceLo: lo, fenceHi: hi,
+            removed: a.length - ref.length
+        };
+    }
+    var f2 = function (v) { return isFinite(v) ? v.toFixed(2) : '–'; };
+    var f3 = function (v) { return isFinite(v) ? v.toFixed(3) : '–'; };
+
+    // ───────── 필터 ─────────
+    function pass(x) {
+        if (!S.types[x.t]) return false;
+        if (S.sgg && x.s !== S.sgg) return false;
+        if (S.emd && x.e !== S.emd) return false;
+        var rk = Object.keys(S.ris);
+        if (rk.length && !S.ris[x.s + '|' + x.e + '|' + x.l]) return false;
+        var zk = Object.keys(S.zones);
+        if (zk.length && !S.zones[x.z]) return false;
+        var uk = Object.keys(S.uses);
+        if (uk.length && !S.uses[x.u]) return false;
+        if (S.yearMin && x.y < S.yearMin) return false;
+        return true;
+    }
+    // 리 필터를 뺀 통과 (지도 pill·리 목록용)
+    function passNoRi(x) {
+        if (!S.types[x.t]) return false;
+        if (S.sgg && x.s !== S.sgg) return false;
+        if (S.emd && x.e !== S.emd) return false;
+        var zk = Object.keys(S.zones);
+        if (zk.length && !S.zones[x.z]) return false;
+        var uk = Object.keys(S.uses);
+        if (uk.length && !S.uses[x.u]) return false;
+        if (S.yearMin && x.y < S.yearMin) return false;
+        return true;
+    }
+
+    // ───────── 칩 렌더 ─────────
+    function chipRow(el, items, isActive, onClick, cls) {
+        el.innerHTML = '';
+        items.forEach(function (it) {
+            var c = document.createElement('div');
+            c.className = 'chip ' + (cls ? cls(it) : '') + (isActive(it) ? ' active' : '');
+            c.textContent = it.label;
+            c.onclick = function () { onClick(it); refresh(); };
+            el.appendChild(c);
+        });
+    }
+
+    function renderFilters() {
+        chipRow(document.getElementById('f-type'),
+            [{label: '평가사례', v: 0}, {label: '거래사례', v: 1}],
+            function (it) { return S.types[it.v]; },
+            function (it) { S.types[it.v] = !S.types[it.v]; },
+            function (it) { return 'c-type' + it.v; });
+
+        var sggs = {};
+        ROWS.forEach(function (x) { sggs[x.s] = 1; });
+        chipRow(document.getElementById('f-sgg'),
+            [{label: '전체', v: null}].concat(Object.keys(sggs).sort().map(function (s) { return {label: s, v: s}; })),
+            function (it) { return S.sgg === it.v; },
+            function (it) { S.sgg = it.v; S.emd = null; S.ris = {}; renderFilters(); },
+            function (it) { return it.v === null ? 'c-all' : ''; });
+
+        var emds = {};
+        ROWS.forEach(function (x) { if (!S.sgg || x.s === S.sgg) emds[x.e] = 1; });
+        chipRow(document.getElementById('f-emd'),
+            [{label: '읍면 전체', v: null}].concat(Object.keys(emds).sort().map(function (e) { return {label: e, v: e}; })),
+            function (it) { return S.emd === it.v; },
+            function (it) { S.emd = it.v; S.ris = {}; renderFilters(); },
+            function (it) { return it.v === null ? 'c-all' : ''; });
+
+        var ris = {};
+        ROWS.forEach(function (x) {
+            if ((!S.sgg || x.s === S.sgg) && (!S.emd || x.e === S.emd)) ris[x.s + '|' + x.e + '|' + x.l] = x.l;
+        });
+        var riItems = Object.keys(ris).sort().map(function (k) { return {label: ris[k], v: k}; });
+        chipRow(document.getElementById('f-ri'),
+            (S.emd ? riItems : []),        // 리 칩은 읍면을 고른 뒤에만 (50개 나열 방지)
+            function (it) { return !!S.ris[it.v]; },
+            function (it) { if (S.ris[it.v]) delete S.ris[it.v]; else S.ris[it.v] = 1; });
+
+        chipRow(document.getElementById('f-zone'),
+            META.zones.map(function (z, i) { return {label: z.replace('지역', ''), v: i}; }),
+            function (it) { return !!S.zones[it.v]; },
+            function (it) { if (S.zones[it.v]) delete S.zones[it.v]; else S.zones[it.v] = 1; });
+
+        chipRow(document.getElementById('f-use'),
+            META.uses.map(function (u, i) { return {label: u, v: i}; }),
+            function (it) { return !!S.uses[it.v]; },
+            function (it) { if (S.uses[it.v]) delete S.uses[it.v]; else S.uses[it.v] = 1; });
+
+        chipRow(document.getElementById('f-year'),
+            [{label: '전체', v: 0}, {label: '2022~', v: 2022}, {label: '2023~', v: 2023},
+             {label: '2024~', v: 2024}, {label: '2025~', v: 2025}, {label: '2026', v: 2026}],
+            function (it) { return S.yearMin === it.v; },
+            function (it) { S.yearMin = it.v; },
+            function (it) { return it.v === 0 ? 'c-all' : ''; });
+    }
+
+    // ───────── 통계 패널 ─────────
+    function renderStats(sel) {
+        var body = document.getElementById('stat-body');
+        var note = document.getElementById('stat-note');
+        if (sel.length < 3) {
+            document.getElementById('rep-med').textContent = '–';
+            document.getElementById('rep-trim').textContent = '–';
+            body.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#a0aec0;">표본 3건 이상 필요</td></tr>';
+            note.textContent = '';
+            drawHisto(null);
+            return;
+        }
+        var vals = sel.map(function (x) { return x.r; });
+        var st = stats(vals);
+        document.getElementById('rep-med').textContent = f3(quantile(st.ref, 0.5));
+        document.getElementById('rep-trim').textContent = f3(mean(st.trim));
+        var rows = [
+            ['원자료', st.raw, false],
+            ['IQR 정제', st.ref, true],
+            ['10% 절사', st.trim, false]
+        ];
+        body.innerHTML = rows.map(function (r) {
+            var a = r[1];
+            return '<tr' + (r[2] ? ' class="hl"' : '') + '><td>' + r[0] + '</td><td>' + a.length +
+                   '</td><td>' + f3(mean(a)) + '</td><td>' + f3(quantile(a.slice().sort(function(x,y){return x-y;}), 0.5)) +
+                   '</td><td>' + f3(stdev(a)) + '</td></tr>';
+        }).join('');
+        note.innerHTML = 'Q1 ' + f2(st.q1) + ' · Q3 ' + f2(st.q3) +
+            ' · 최소 ' + f2(st.raw[0]) + ' · 최대 ' + f2(st.raw[st.raw.length - 1]) +
+            ' &nbsp;|&nbsp; IQR 정제로 <b>' + st.removed + '건</b> 제거 (경계 ' +
+            f2(Math.max(0, st.fenceLo)) + '~' + f2(st.fenceHi) + ')';
+        drawHisto(st);
+    }
+
+    function drawHisto(st) {
+        var cv = document.getElementById('histo'), ctx = cv.getContext('2d');
+        ctx.clearRect(0, 0, cv.width, cv.height);
+        if (!st || st.raw.length < 3) return;
+        var a = st.raw;
+        var lo = 0, hi = Math.min(a[a.length - 1], quantile(a, 0.99) * 1.15);
+        if (hi <= lo) hi = a[a.length - 1] || 1;
+        var nb = 28, bins = new Array(nb).fill(0), binsRef = new Array(nb).fill(0);
+        a.forEach(function (v) {
+            var i = Math.min(nb - 1, Math.floor((v - lo) / (hi - lo) * nb));
+            if (i >= 0) { bins[i]++; if (v >= st.fenceLo && v <= st.fenceHi) binsRef[i]++; }
+        });
+        var max = Math.max.apply(null, bins) || 1;
+        var W = cv.width, H = cv.height, pb = 26, pt = 8;
+        var bw = W / nb;
+        for (var i = 0; i < nb; i++) {
+            var h1 = (H - pb - pt) * bins[i] / max;
+            var h2 = (H - pb - pt) * binsRef[i] / max;
+            ctx.fillStyle = '#e2e8f0';
+            ctx.fillRect(i * bw + 1, H - pb - h1, bw - 2, h1);
+            ctx.fillStyle = '#63a2e4';
+            ctx.fillRect(i * bw + 1, H - pb - h2, bw - 2, h2);
+        }
+        function vx(v) { return (v - lo) / (hi - lo) * W; }
+        var med = quantile(st.ref, 0.5);
+        ctx.strokeStyle = '#0051af'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(vx(med), pt); ctx.lineTo(vx(med), H - pb); ctx.stroke();
+        ctx.setLineDash([5, 4]); ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 1.5;
+        [st.fenceLo, st.fenceHi].forEach(function (f) {
+            if (f > lo && f < hi) { ctx.beginPath(); ctx.moveTo(vx(f), pt); ctx.lineTo(vx(f), H - pb); ctx.stroke(); }
+        });
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#718096'; ctx.font = '20px Pretendard, sans-serif'; ctx.textAlign = 'center';
+        for (var t = 0; t <= 4; t++) {
+            var v = lo + (hi - lo) * t / 4;
+            ctx.fillText(v.toFixed(1), (W * t / 4) || 14, H - 6);
+        }
+        ctx.textAlign = 'left'; ctx.fillStyle = '#0051af';
+        ctx.fillText('중위 ' + med.toFixed(3), Math.min(vx(med) + 6, W - 130), pt + 18);
+    }
+
+    // ───────── 리 목록 + 지도 ─────────
+    var map = L.map('map', {zoomControl: true}).setView([34.75, 126.45], 11);
+    initKakaoBaseMap(map);
+    var pillLayer = L.layerGroup().addTo(map);
+
+    function colorOf(v) {               // 중위 개공비율 → 색
+        if (!isFinite(v)) return '#a0aec0';
+        var t = Math.max(0, Math.min(1, (v - 0.8) / (2.6 - 0.8)));
+        var r = Math.round(37 + t * (220 - 37));
+        var g = Math.round(99 + t * (38 - 99));
+        var b = Math.round(235 + t * (38 - 235));
+        return 'rgb(' + r + ',' + g + ',' + b + ')';
+    }
+
+    function riAgg() {
+        var by = {};
+        ROWS.forEach(function (x) {
+            if (!passNoRi(x)) return;
+            var k = x.s + '|' + x.e + '|' + x.l;
+            (by[k] = by[k] || []).push(x.r);
+        });
+        return by;
+    }
+
+    function renderMapAndList() {
+        var by = riAgg();
+        pillLayer.clearLayers();
+        var listEl = document.getElementById('ri-list');
+        listEl.innerHTML = '';
+        var entries = Object.keys(by).map(function (k) {
+            var st = by[k].length >= 3 ? stats(by[k]) : null;
+            var md = st ? quantile(st.ref, 0.5) : (by[k].length ? by[k].slice().sort(function(a,b){return a-b;})[Math.floor(by[k].length/2)] : NaN);
+            return {k: k, n: by[k].length, md: md};
+        }).sort(function (a, b) { return b.n - a.n; });
+
+        if (!entries.length) listEl.innerHTML = '<div class="empty-state">조건에 맞는 사례가 없습니다</div>';
+
+        entries.forEach(function (e) {
+            var parts = e.k.split('|');
+            var sel = !!S.ris[e.k];
+            var ll = CENTERS[e.k];
+            if (ll) {
+                var pill = L.marker(ll, {icon: L.divIcon({className: 'pill-wrap',
+                    html: '<span class="ri-pill' + (sel ? ' sel' : '') + '"><span class="dot" style="background:' + colorOf(e.md) + '"></span>' +
+                          parts[2] + ' ' + (isFinite(e.md) ? e.md.toFixed(2) : '–') + ' <small>n=' + e.n + '</small></span>',
+                    iconSize: null, iconAnchor: [40, 12]})});
+                pill.on('click', function () {
+                    if (S.ris[e.k]) delete S.ris[e.k]; else S.ris[e.k] = 1;
+                    refresh();
+                });
+                pill.addTo(pillLayer);
+            }
+            var it = document.createElement('div');
+            it.className = 'ri-item' + (sel ? ' sel' : '');
+            it.innerHTML = '<span class="nm">' + parts[2] + '<small>' + parts[0] + ' ' + parts[1] + '</small></span>' +
+                           '<span class="md">' + (isFinite(e.md) ? e.md.toFixed(2) : '–') + '</span>' +
+                           '<span class="ct">' + e.n + '건</span>';
+            it.onclick = function () {
+                if (S.ris[e.k]) delete S.ris[e.k]; else S.ris[e.k] = 1;
+                refresh();
+            };
+            listEl.appendChild(it);
+        });
+    }
+
+    // ───────── 전체 갱신 ─────────
+    function refresh() {
+        renderFilters();
+        var sel = ROWS.filter(pass);
+        document.getElementById('cnt-sel').textContent = sel.length.toLocaleString();
+        document.getElementById('cnt-all').textContent = ROWS.length.toLocaleString();
+        renderStats(sel);
+        renderMapAndList();
+    }
+
+    refresh();
+
+    // 첫 화면: 데이터 전체 범위로
+    var lls = Object.keys(CENTERS).map(function (k) { return CENTERS[k]; });
+    if (lls.length) map.fitBounds(lls, {padding: [40, 40]});
+})();
+</script>
+</body>
+</html>
