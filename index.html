@@ -362,7 +362,13 @@
 
     // ───────── 리 목록 + 지도 ─────────
     var map = L.map('map', {zoomControl: true}).setView([34.75, 126.45], 11);
-    initKakaoBaseMap(map);
+    try {
+        initKakaoBaseMap(map);
+    } catch (e) {
+        // 카카오 SDK 미로드(로컬 등 도메인 제한) — 통계·필터는 그대로 동작
+        console.warn('카카오 베이스맵 없이 실행:', e.message);
+        document.getElementById('kakao-map').style.background = '#e8edf3';
+    }
     var pillLayer = L.layerGroup().addTo(map);
 
     function colorOf(v) {               // 중위 개공비율 → 색
