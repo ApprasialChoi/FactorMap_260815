@@ -227,6 +227,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="js/kakao_base.js"></script>
 <script src="data/records.js"></script>
+<script src="data/boundaries.js"></script>
 <script>
 (function () {
     'use strict';
@@ -467,7 +468,7 @@
         ctx.setLineDash([]);
         ctx.fillStyle = '#718096'; ctx.font = '20px Pretendard, sans-serif'; ctx.textAlign = 'center';
         var ax = S.metric === 'p'
-            ? function (v) { return Math.round(v / 1000) + 'k'; }
+            ? function (v) { return Math.round(v).toLocaleString('ko-KR'); }
             : function (v) { return v.toFixed(1); };
         for (var t = 0; t <= 4; t++) {
             var v = lo + (hi - lo) * t / 4;
@@ -507,6 +508,31 @@
             (by[k] = by[k] || []).push(val(x));
         });
         return by;
+    }
+
+    // ───────── 리 외곽선 (법정리 경계 · 데이터 있는 리만) ─────────
+    var BOUNDS = window.FM_BOUNDS || {};
+    var boundLayer = L.layerGroup().addTo(map);
+    function renderBounds() {
+        boundLayer.clearLayers();
+        var by = riAgg();                       // 현재 속성 필터에서 데이터가 있는 리
+        Object.keys(BOUNDS).forEach(function (k) {
+            if (!by[k]) return;
+            var seld = !!S.ris[k];
+            var pg = L.polygon(BOUNDS[k], {
+                color: seld ? '#0051af' : '#2b6cb0',
+                weight: seld ? 2.5 : 1.2,
+                dashArray: seld ? null : '5,4',
+                fillColor: '#2b6cb0',
+                fillOpacity: seld ? 0.10 : 0.03,
+                interactive: true
+            });
+            pg.on('click', function () {
+                if (S.ris[k]) delete S.ris[k]; else S.ris[k] = 1;
+                refresh();
+            });
+            pg.addTo(boundLayer);
+        });
     }
 
     // ───────── 밸류맵식 개별 마커 (줌 14+ · 화면 범위 · 필지 좌표) ─────────
@@ -599,7 +625,7 @@
         if (mds.length) { SCALE.lo = quantile(mds, 0.1); SCALE.hi = quantile(mds, 0.9); }
         if (!(SCALE.hi > SCALE.lo)) { SCALE.lo = 0; SCALE.hi = (mds[mds.length - 1] || 1) || 1; }
         var short = S.metric === 'p'
-            ? function (v) { return isFinite(v) ? (v >= 10000 ? Math.round(v / 1000) + 'k' : Math.round(v)) : '–'; }
+            ? function (v) { return isFinite(v) ? Math.round(v).toLocaleString('ko-KR') : '–'; }
             : function (v) { return isFinite(v) ? v.toFixed(2) : '–'; };
 
         entries.forEach(function (e) {
@@ -748,6 +774,7 @@
         document.getElementById('cnt-all').textContent = ROWS.length.toLocaleString();
         renderStats(sel);
         renderMapAndList();
+        renderBounds();
         renderMarkers();
         // 지표 결측으로 빠진 건수를 숨기지 않고 표시
         var noVal = 0;
