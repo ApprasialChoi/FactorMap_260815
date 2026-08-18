@@ -101,6 +101,28 @@
     .ri-item .ct { color: #718096; width: 58px; text-align: right; font-size: 11px; }
     .empty-state { padding: 30px 20px; text-align: center; color: #a0aec0; font-size: 12px; }
 
+    /* 밸류맵식 개별 마커 — 1줄: 용도지역|지대, 2줄: 토지단가 */
+    .vm-wrap { background: none; border: none; }
+    .vm {
+        display: inline-block; white-space: nowrap; cursor: pointer;
+        background: #fff; border-radius: 7px; overflow: hidden;
+        box-shadow: 0 2px 7px rgba(15,23,42,.28); border: 1.5px solid rgba(26,54,93,.35);
+        font-family: inherit; position: relative;
+    }
+    .vm-top { display: flex; font-size: 10px; font-weight: 700; color: #fff; }
+    .vm-top span { padding: 1.5px 6px; }
+    .vm-top .vm-j { background: rgba(0,0,0,.18); }
+    .vm.t0 .vm-top { background: #7c3aed; }
+    .vm.t1 .vm-top { background: #0d9488; }
+    .vm.t2 .vm-top { background: #c2410c; }
+    .vm-p { padding: 1px 6px 2px; text-align: center; font-size: 11.5px; font-weight: 800; color: #1a365d; font-variant-numeric: tabular-nums; }
+    .vm.t2 { border-style: dashed; border-color: #c2410c; }
+    .vm.t2 .vm-p::after { content: '배분'; font-size: 8.5px; font-weight: 700; color: #c2410c; margin-left: 3px; vertical-align: 1px; }
+    .vm-more {
+        background: rgba(26,54,93,.88); color: #fff; border-radius: 12px;
+        padding: 3px 10px; font-size: 11px; font-weight: 700; white-space: nowrap;
+    }
+
     /* 지도 라벨 */
     .pill-wrap { background: none; border: none; }
     .ri-pill {
@@ -340,13 +362,16 @@
             function (it) { return !!S.ris[it.v]; },
             function (it) { if (S.ris[it.v]) delete S.ris[it.v]; else S.ris[it.v] = 1; });
 
+        // 칩은 앞 12종(용도지역)·5그룹(이용상황)만 — 그 외(농림 등)는 칩 미선택(전체)일 때만 포함
         chipRow(document.getElementById('f-zone'),
-            META.zones.map(function (z, i) { return {label: z.replace('지역', ''), v: i}; }),
+            META.zones.slice(0, META.nzchip || META.zones.length)
+                .map(function (z, i) { return {label: z.replace('지역', ''), v: i}; }),
             function (it) { return !!S.zones[it.v]; },
             function (it) { if (S.zones[it.v]) delete S.zones[it.v]; else S.zones[it.v] = 1; });
 
         chipRow(document.getElementById('f-use'),
-            META.uses.map(function (u, i) { return {label: u, v: i}; }),
+            META.uses.slice(0, META.nuchip || META.uses.length)
+                .map(function (u, i) { return {label: u, v: i}; }),
             function (it) { return !!S.uses[it.v]; },
             function (it) { if (S.uses[it.v]) delete S.uses[it.v]; else S.uses[it.v] = 1; });
 
@@ -454,6 +479,7 @@
 
     // ───────── 리 목록 + 지도 ─────────
     var map = L.map('map', {zoomControl: true}).setView([34.75, 126.45], 11);
+    window._fmMap = map;    // 디버그·자동검증용 핸들
     try {
         initKakaoBaseMap(map);
     } catch (e) {
@@ -482,6 +508,78 @@
         });
         return by;
     }
+
+    // ───────── 밸류맵식 개별 마커 (줌 14+ · 화면 범위 · 필지 좌표) ─────────
+    var vmLayer = L.layerGroup().addTo(map);
+    var VM_ZOOM = 14, VM_CAP = 600;
+    var ZSHORT = {'제1종전용주거지역': '1종전주', '제2종전용주거지역': '2종전주',
+                  '제1종일반주거지역': '1종일주', '제2종일반주거지역': '2종일주',
+                  '제3종일반주거지역': '3종일주', '자연환경보전지역': '자연환경',
+                  '기타·미상': '미상'};
+    function zshort(i) {
+        var z = META.zones[i] || '';
+        return ZSHORT[z] || z.replace('지역', '').replace('구역', '');
+    }
+    function jdOf(x) { return (META.jd && META.jd[x.j] != null) ? META.jd[x.j] : ''; }
+    function fmtWon(v) { return v == null ? '–' : Number(v).toLocaleString('ko-KR'); }
+    function escv(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+        return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
+
+    function vmPopup(x) {
+        return '<h4>' + TYPES[x.t] +
+            (x.t === 2 ? ' · <span style="color:#c2410c;">' + ((x.q || 0) === 0 ? 'O 사용가능' : '△ 검토필요') + '</span>' : '') + '</h4>' +
+            escv(x.a || (x.s + ' ' + x.e + ' ' + x.l)) + '<br>' +
+            '연도 ' + (x.y || '–') + ' · ' + escv(META.zones[x.z]) +
+            (jdOf(x) ? ' · 지대 ' + escv(jdOf(x)) : '') + '<br>' +
+            '토지단가 <b>' + fmtWon(x.p) + '</b> 원/㎡' +
+            (x.g ? ' · 공시지가 ' + fmtWon(x.g) : '') +
+            (x.r ? ' · 개공비율 <b>' + Number(x.r).toFixed(3) + '</b>' : '');
+    }
+
+    function renderMarkers() {
+        vmLayer.clearLayers();
+        if (map.getZoom() < VM_ZOOM) return;
+        var bd = map.getBounds();
+        var cand = [];
+        for (var i = 0; i < ROWS.length; i++) {
+            var x = ROWS[i];
+            if (!x.ll || !pass(x)) continue;
+            if (!bd.contains(x.ll)) continue;
+            cand.push(x);
+        }
+        var total = cand.length;
+        // 상한 초과 시 희소 유형(배분·거래)이 평가사례에 밀려 안 보이는 일이 없도록 유형 우선
+        if (total > VM_CAP) cand.sort(function (a, b) { return b.t - a.t; });
+        var sel = cand.slice(0, VM_CAP);
+        sel.forEach(function (x) {
+            var html = '<div class="vm t' + x.t + '">' +
+                '<div class="vm-top"><span class="vm-z">' + zshort(x.z) + '</span>' +
+                '<span class="vm-j">' + escv(jdOf(x) || META.uses[x.u]) + '</span></div>' +
+                '<div class="vm-p">' + fmtWon(x.p) + '</div></div>';
+            var m = L.marker(x.ll, {icon: L.divIcon({className: 'vm-wrap', html: html,
+                iconSize: null, iconAnchor: [34, 16]})});
+            m.bindPopup(vmPopup(x), {maxWidth: 330});
+            m.addTo(vmLayer);
+        });
+        if (total > sel.length) {
+            try {
+                L.marker(map.getCenter(), {interactive: false, icon: L.divIcon({className: 'vm-wrap',
+                    html: '<span class="vm-more">화면 내 ' + total.toLocaleString() + '건 중 ' + VM_CAP + '건만 표시 — 더 확대하세요</span>',
+                    iconSize: null, iconAnchor: [110, -170]})}).addTo(vmLayer);
+            } catch (e) { /* 컨테이너 크기 0 등으로 중심 계산 불가 시 안내만 생략 */ }
+        }
+    }
+
+    function updateLayerMode() {
+        if (map.getZoom() >= VM_ZOOM) {
+            if (map.hasLayer(pillLayer)) map.removeLayer(pillLayer);
+        } else if (!map.hasLayer(pillLayer)) {
+            map.addLayer(pillLayer);
+        }
+        renderMarkers();
+    }
+    map.on('zoomend', updateLayerMode);
+    map.on('moveend', renderMarkers);
 
     function renderMapAndList() {
         var by = riAgg();
@@ -650,6 +748,7 @@
         document.getElementById('cnt-all').textContent = ROWS.length.toLocaleString();
         renderStats(sel);
         renderMapAndList();
+        renderMarkers();
         // 지표 결측으로 빠진 건수를 숨기지 않고 표시
         var noVal = 0;
         ROWS.forEach(function (x) {
