@@ -4,15 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>그밖의요인 통계맵</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; font-family: 'Pretendard', 'Malgun Gothic', -apple-system, sans-serif; overflow: hidden; }
 
     /* ===== 지도 ===== */
-    #map, #kakao-map { position: absolute; top: 0; right: 0; bottom: 0; left: 340px; width: calc(100% - 340px); }
-    #kakao-map { z-index: 0; }
-    #map { z-index: 1; background: transparent; }
+    #kakao-map { position: absolute; top: 0; right: 0; bottom: 0; left: 340px; width: calc(100% - 340px); z-index: 0; }
 
     /* ===== 사이드 패널 ===== */
     #side-panel {
@@ -134,8 +131,18 @@
     .ri-pill .dot { width: 9px; height: 9px; border-radius: 50%; }
     .ri-pill small { font-weight: 600; color: #718096; font-size: 10px; }
     .ri-pill.sel { outline: 2.5px solid #0051af; }
-    .leaflet-popup-content { font-size: 12px; line-height: 1.65; margin: 10px 13px; }
-    .leaflet-popup-content h4 { font-size: 13px; margin-bottom: 4px; color: #1a365d; }
+    .fm-pop {
+        position: relative; background: #fff; border-radius: 10px; padding: 10px 26px 10px 13px;
+        font-size: 12px; line-height: 1.65; box-shadow: 0 3px 14px rgba(15,23,42,.3);
+        border: 1px solid rgba(26,54,93,.2); max-width: 330px; white-space: normal;
+    }
+    .fm-pop h4 { font-size: 13px; margin-bottom: 4px; color: #1a365d; }
+    .fm-pop .fm-pop-x { position: absolute; top: 6px; right: 9px; cursor: pointer; color: #a0aec0; font-weight: 700; }
+    .fm-pop .fm-pop-x:hover { color: #2d3748; }
+    .fm-pop::after {
+        content: ''; position: absolute; left: 50%; bottom: -7px; margin-left: -7px;
+        border: 7px solid transparent; border-bottom: none; border-top-color: #fff;
+    }
 </style>
 </head>
 <body>
@@ -216,18 +223,16 @@
 </div>
 
 <div id="kakao-map"></div>
-<div id="map"></div>
 <div id="map-tools">
     <button id="btn-cadastral" title="카카오맵 지적편집도 — 용도지역 색상 표시">🗺️ 지적편집도(용도지역)</button>
     <button id="btn-hybrid" title="위성 + 라벨">🛰️ 위성</button>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=231190ac1aca72ada0b739110d8a0eb4"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="js/kakao_base.js"></script>
 <script src="data/records.js"></script>
 <script src="data/boundaries.js"></script>
+<script src="data/parcels.js"></script>
 <script>
 (function () {
     'use strict';
@@ -478,17 +483,30 @@
         ctx.fillText('중위 ' + M().fmt(med), Math.min(vx(med) + 6, W - 180), pt + 18);
     }
 
-    // ───────── 리 목록 + 지도 ─────────
-    var map = L.map('map', {zoomControl: true}).setView([34.75, 126.45], 11);
-    window._fmMap = map;    // 디버그·자동검증용 핸들
-    try {
-        initKakaoBaseMap(map);
-    } catch (e) {
-        // 카카오 SDK 미로드(로컬 등 도메인 제한) — 통계·필터는 그대로 동작
-        console.warn('카카오 베이스맵 없이 실행:', e.message);
+    // ───────── 지도 (카카오 네이티브 — Leaflet 동기화 오차 제거) ─────────
+    var KM = null;
+    if (typeof kakao !== 'undefined' && kakao.maps) {
+        KM = new kakao.maps.Map(document.getElementById('kakao-map'),
+            {center: new kakao.maps.LatLng(34.75, 126.45), level: 9});
+        window.kakaoMap = KM;           // 지적편집도·위성 버튼용
+        window._fmMap = KM;             // 디버그·자동검증용
+    } else {
+        console.warn('카카오 SDK 미로드 — 통계·필터만 동작');
         document.getElementById('kakao-map').style.background = '#e8edf3';
     }
-    var pillLayer = L.layerGroup().addTo(map);
+    function KLL(a) { return new kakao.maps.LatLng(a[0], a[1]); }
+    function clearOvs(arr) { arr.forEach(function (o) { o.setMap(null); }); arr.length = 0; }
+    var pillOvs = [], boundPolys = [], vmOvs = [], infoOv = null;
+
+    function showInfo(pos, html) {
+        if (infoOv) { infoOv.setMap(null); infoOv = null; }
+        var el = document.createElement('div');
+        el.className = 'fm-pop';
+        el.innerHTML = html + '<span class="fm-pop-x">✕</span>';
+        el.querySelector('.fm-pop-x').onclick = function () { infoOv.setMap(null); infoOv = null; };
+        infoOv = new kakao.maps.CustomOverlay({position: pos, content: el, yAnchor: 1.18, zIndex: 60, clickable: true});
+        infoOv.setMap(KM);
+    }
 
     var SCALE = {lo: 0.8, hi: 2.6};     // 색 스케일 (지표에 따라 갱신)
     function colorOf(v) {
@@ -512,32 +530,35 @@
 
     // ───────── 리 외곽선 (법정리 경계 · 데이터 있는 리만) ─────────
     var BOUNDS = window.FM_BOUNDS || {};
-    var boundLayer = L.layerGroup().addTo(map);
     function renderBounds() {
-        boundLayer.clearLayers();
+        if (!KM) return;
+        clearOvs(boundPolys);
         var by = riAgg();                       // 현재 속성 필터에서 데이터가 있는 리
         Object.keys(BOUNDS).forEach(function (k) {
             if (!by[k]) return;
             var seld = !!S.ris[k];
-            var pg = L.polygon(BOUNDS[k], {
-                color: seld ? '#0051af' : '#2b6cb0',
-                weight: seld ? 2.5 : 1.2,
-                dashArray: seld ? null : '5,4',
-                fillColor: '#2b6cb0',
-                fillOpacity: seld ? 0.10 : 0.03,
-                interactive: true
+            BOUNDS[k].forEach(function (ring) {
+                var pg = new kakao.maps.Polygon({
+                    map: KM, path: ring.map(KLL),
+                    strokeWeight: seld ? 2.5 : 1.2,
+                    strokeColor: seld ? '#0051af' : '#2b6cb0',
+                    strokeOpacity: 0.9,
+                    strokeStyle: seld ? 'solid' : 'shortdash',
+                    fillColor: '#2b6cb0', fillOpacity: seld ? 0.10 : 0.03
+                });
+                kakao.maps.event.addListener(pg, 'click', function () {
+                    if (S.ris[k]) delete S.ris[k]; else S.ris[k] = 1;
+                    refresh();
+                });
+                boundPolys.push(pg);
             });
-            pg.on('click', function () {
-                if (S.ris[k]) delete S.ris[k]; else S.ris[k] = 1;
-                refresh();
-            });
-            pg.addTo(boundLayer);
         });
     }
 
-    // ───────── 밸류맵식 개별 마커 (줌 14+ · 화면 범위 · 필지 좌표) ─────────
-    var vmLayer = L.layerGroup().addTo(map);
-    var VM_ZOOM = 14, VM_CAP = 600;
+    // ───────── 밸류맵식 개별 마커 (카카오 레벨 6 이하 · 화면 범위 · 필지 외곽선) ─────────
+    var PARCELS = window.FM_PARCELS || {};
+    var VM_LEVEL = 6, VM_CAP = 600;
+    var TCOLOR = ['#7c3aed', '#0d9488', '#c2410c'];
     var ZSHORT = {'제1종전용주거지역': '1종전주', '제2종전용주거지역': '2종전주',
                   '제1종일반주거지역': '1종일주', '제2종일반주거지역': '2종일주',
                   '제3종일반주거지역': '3종일주', '자연환경보전지역': '자연환경',
@@ -562,15 +583,22 @@
             (x.r ? ' · 개공비율 <b>' + Number(x.r).toFixed(3) + '</b>' : '');
     }
 
+    function anchorOf(x) {
+        var pc = PARCELS[x.a];
+        return pc ? pc.c : x.ll;            // 필지 중심 우선, 없으면 지오코딩 좌표
+    }
+
     function renderMarkers() {
-        vmLayer.clearLayers();
-        if (map.getZoom() < VM_ZOOM) return;
-        var bd = map.getBounds();
+        if (!KM) return;
+        clearOvs(vmOvs);
+        if (KM.getLevel() > VM_LEVEL) return;
+        var bd = KM.getBounds();
         var cand = [];
         for (var i = 0; i < ROWS.length; i++) {
             var x = ROWS[i];
-            if (!x.ll || !pass(x)) continue;
-            if (!bd.contains(x.ll)) continue;
+            if (!pass(x)) continue;
+            var an = anchorOf(x);
+            if (!an || !bd.contain(KLL(an))) continue;
             cand.push(x);
         }
         var total = cand.length;
@@ -578,38 +606,58 @@
         if (total > VM_CAP) cand.sort(function (a, b) { return b.t - a.t; });
         var sel = cand.slice(0, VM_CAP);
         sel.forEach(function (x) {
-            var html = '<div class="vm t' + x.t + '">' +
+            var an = anchorOf(x);
+            var pc = PARCELS[x.a];
+            if (pc) {                        // 필지 외곽선 — 사례 위치를 정확한 필지로 표시
+                pc.r.forEach(function (ring) {
+                    var pg = new kakao.maps.Polygon({
+                        map: KM, path: ring.map(KLL),
+                        strokeWeight: 2, strokeColor: TCOLOR[x.t], strokeOpacity: 0.95,
+                        strokeStyle: x.t === 2 ? 'shortdash' : 'solid',
+                        fillColor: TCOLOR[x.t], fillOpacity: 0.14, zIndex: 5
+                    });
+                    kakao.maps.event.addListener(pg, 'click', function () {
+                        showInfo(KLL(an), vmPopup(x));
+                    });
+                    pg.setMap(KM);
+                    vmOvs.push(pg);
+                });
+            }
+            var el = document.createElement('div');
+            el.innerHTML = '<div class="vm t' + x.t + '">' +
                 '<div class="vm-top"><span class="vm-z">' + zshort(x.z) + '</span>' +
                 '<span class="vm-j">' + escv(jdOf(x) || META.uses[x.u]) + '</span></div>' +
                 '<div class="vm-p">' + fmtWon(x.p) + '</div></div>';
-            var m = L.marker(x.ll, {icon: L.divIcon({className: 'vm-wrap', html: html,
-                iconSize: null, iconAnchor: [34, 16]})});
-            m.bindPopup(vmPopup(x), {maxWidth: 330});
-            m.addTo(vmLayer);
+            el.firstChild.onclick = function () { showInfo(KLL(an), vmPopup(x)); };
+            var ov = new kakao.maps.CustomOverlay({position: KLL(an), content: el,
+                yAnchor: 1.12, xAnchor: 0.5, zIndex: 20, clickable: true});
+            ov.setMap(KM);
+            vmOvs.push(ov);
         });
         if (total > sel.length) {
-            try {
-                L.marker(map.getCenter(), {interactive: false, icon: L.divIcon({className: 'vm-wrap',
-                    html: '<span class="vm-more">화면 내 ' + total.toLocaleString() + '건 중 ' + VM_CAP + '건만 표시 — 더 확대하세요</span>',
-                    iconSize: null, iconAnchor: [110, -170]})}).addTo(vmLayer);
-            } catch (e) { /* 컨테이너 크기 0 등으로 중심 계산 불가 시 안내만 생략 */ }
+            var nel = document.createElement('div');
+            nel.innerHTML = '<span class="vm-more">화면 내 ' + total.toLocaleString() +
+                '건 중 ' + VM_CAP + '건만 표시 — 더 확대하세요</span>';
+            var nov = new kakao.maps.CustomOverlay({position: KM.getCenter(), content: nel,
+                yAnchor: -4, zIndex: 50, clickable: false});
+            nov.setMap(KM);
+            vmOvs.push(nov);
         }
     }
 
     function updateLayerMode() {
-        if (map.getZoom() >= VM_ZOOM) {
-            if (map.hasLayer(pillLayer)) map.removeLayer(pillLayer);
-        } else if (!map.hasLayer(pillLayer)) {
-            map.addLayer(pillLayer);
-        }
+        if (!KM) return;
+        var showPills = KM.getLevel() > VM_LEVEL;
+        pillOvs.forEach(function (o) { o.setMap(showPills ? KM : null); });
         renderMarkers();
     }
-    map.on('zoomend', updateLayerMode);
-    map.on('moveend', renderMarkers);
+    if (KM) {
+        kakao.maps.event.addListener(KM, 'idle', updateLayerMode);
+    }
 
     function renderMapAndList() {
         var by = riAgg();
-        pillLayer.clearLayers();
+        clearOvs(pillOvs);
         var listEl = document.getElementById('ri-list');
         listEl.innerHTML = '';
         var entries = Object.keys(by).map(function (k) {
@@ -632,16 +680,18 @@
             var parts = e.k.split('|');
             var sel = !!S.ris[e.k];
             var ll = CENTERS[e.k];
-            if (ll) {
-                var pill = L.marker(ll, {icon: L.divIcon({className: 'pill-wrap',
-                    html: '<span class="ri-pill' + (sel ? ' sel' : '') + '"><span class="dot" style="background:' + colorOf(e.md) + '"></span>' +
-                          parts[2] + ' ' + short(e.md) + ' <small>n=' + e.n + '</small></span>',
-                    iconSize: null, iconAnchor: [40, 12]})});
-                pill.on('click', function () {
+            if (ll && KM) {
+                var pel = document.createElement('div');
+                pel.innerHTML = '<span class="ri-pill' + (sel ? ' sel' : '') + '"><span class="dot" style="background:' + colorOf(e.md) + '"></span>' +
+                          parts[2] + ' ' + short(e.md) + ' <small>n=' + e.n + '</small></span>';
+                pel.firstChild.onclick = function () {
                     if (S.ris[e.k]) delete S.ris[e.k]; else S.ris[e.k] = 1;
                     refresh();
-                });
-                pill.addTo(pillLayer);
+                };
+                var pill = new kakao.maps.CustomOverlay({position: KLL(ll), content: pel,
+                    yAnchor: 0.5, xAnchor: 0.5, zIndex: 10, clickable: true});
+                if (KM.getLevel() > VM_LEVEL) pill.setMap(KM);
+                pillOvs.push(pill);
             }
             var it = document.createElement('div');
             it.className = 'ri-item' + (sel ? ' sel' : '');
@@ -799,8 +849,11 @@
     refresh();
 
     // 첫 화면: 데이터 전체 범위로
-    var lls = Object.keys(CENTERS).map(function (k) { return CENTERS[k]; });
-    if (lls.length) map.fitBounds(lls, {padding: [40, 40]});
+    if (KM) {
+        var kb = new kakao.maps.LatLngBounds();
+        Object.keys(CENTERS).forEach(function (k) { kb.extend(KLL(CENTERS[k])); });
+        if (!kb.isEmpty()) KM.setBounds(kb, 40);
+    }
 })();
 </script>
 </body>
