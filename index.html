@@ -106,6 +106,10 @@
         box-shadow: 0 2px 7px rgba(15,23,42,.28); border: 1.5px solid rgba(26,54,93,.35);
         font-family: inherit; position: relative;
     }
+    .vm-loc {
+        padding: 1.5px 6px; text-align: center; font-size: 10px; font-weight: 700;
+        color: #334155; background: #f1f5f9; border-bottom: 1px solid #e2e8f0;
+    }
     .vm-top { display: flex; font-size: 10px; font-weight: 700; color: #fff; }
     .vm-top span { padding: 1.5px 6px; }
     .vm-top .vm-j { background: rgba(0,0,0,.18); }
@@ -626,8 +630,11 @@
                     vmOvs.push(pg);
                 });
             }
+            var toks = String(x.a || '').split(' ');
+            var loc = x.l + (toks.length === 5 ? ' ' + toks[4] : '');
             var el = document.createElement('div');
             el.innerHTML = '<div class="vm t' + x.t + '">' +
+                '<div class="vm-loc">' + escv(loc) + '</div>' +
                 '<div class="vm-top"><span class="vm-z">' + zshort(x.z) + '</span>' +
                 '<span class="vm-j">' + escv(jdOf(x) || META.uses[x.u]) + '</span></div>' +
                 '<div class="vm-p">' + fmtWon(x.p) + '</div></div>';
