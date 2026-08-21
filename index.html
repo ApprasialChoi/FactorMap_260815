@@ -253,9 +253,9 @@
 
 <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=231190ac1aca72ada0b739110d8a0eb4"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="data/records.js?v=202608212109"></script>
-<script src="data/boundaries.js?v=202608212109"></script>
-<script src="data/parcels.js?v=202608212109"></script>
+<script src="data/records.js?v=202608212119"></script>
+<script src="data/boundaries.js?v=202608212119"></script>
+<script src="data/parcels.js?v=202608212119"></script>
 <script>
 (function () {
     'use strict';
@@ -613,6 +613,9 @@
         if (x.t !== 2 || !d) return '';
         function row(k, v) { return '<tr><td class="k">' + k + '</td><td class="v">' + v + '</td></tr>'; }
         var h = '<div class="fm-alloc"><div class="ttl">배분 근거</div><table>';
+        if (d.use) h += row('건물 주용도', '<b>' + escv(d.use) + '</b>');
+        if (d.st) h += row('주구조', escv(d.st));
+        if (d.cls) h += row('단가표 적용', escv(d.cls) + (d.cst ? ' / ' + escv(d.cst) : ''));
         if (d.uc) h += row('재조달 표준단가' + (d.gr ? ' (급수' + d.gr + ')' : ''),
                            '<b>' + fmtWon(d.uc) + '</b> 원/㎡');
         if (d.life) h += row('내용연수 · 경과연수',
