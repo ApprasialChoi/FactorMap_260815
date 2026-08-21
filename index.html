@@ -134,7 +134,10 @@
     .fm-pop {
         position: relative; background: #fff; border-radius: 10px; padding: 10px 26px 10px 13px;
         font-size: 12px; line-height: 1.65; box-shadow: 0 3px 14px rgba(15,23,42,.3);
-        border: 1px solid rgba(26,54,93,.2); max-width: 330px; white-space: normal;
+        border: 1px solid rgba(26,54,93,.2); white-space: normal;
+        /* 카카오 CustomOverlay 는 폭 기준이 없어 max-width 만 주면 최소 폭으로
+           쪼그라들며 세로로 길게 꺾인다 → 고정 폭 필수 */
+        width: 300px;
     }
     .fm-pop h4 { font-size: 13px; margin-bottom: 4px; color: #1a365d; }
     .fm-pop .fm-pop-x { position: absolute; top: 6px; right: 9px; cursor: pointer; color: #a0aec0; font-weight: 700; }
