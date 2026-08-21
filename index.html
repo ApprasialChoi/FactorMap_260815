@@ -150,6 +150,16 @@
         width: 300px;
     }
     .fm-pop h4 { font-size: 13px; margin-bottom: 4px; color: #1a365d; }
+    .fm-alloc {
+        margin-top: 7px; padding-top: 6px; border-top: 1px dashed #cbd5e0;
+        font-size: 11px; line-height: 1.55;
+    }
+    .fm-alloc .ttl { font-weight: 700; color: #c2410c; margin-bottom: 3px; }
+    .fm-alloc table { width: 100%; border-collapse: collapse; }
+    .fm-alloc td { padding: 1px 0; vertical-align: top; }
+    .fm-alloc td.k { color: #718096; white-space: nowrap; padding-right: 8px; }
+    .fm-alloc td.v { text-align: right; font-variant-numeric: tabular-nums; }
+    .fm-alloc .eq { color: #94a3b8; font-size: 10.5px; margin-top: 4px; }
     .fm-pop .fm-pop-x { position: absolute; top: 6px; right: 9px; cursor: pointer; color: #a0aec0; font-weight: 700; }
     .fm-pop .fm-pop-x:hover { color: #2d3748; }
     .fm-pop::after {
@@ -593,7 +603,29 @@
             (jdOf(x) ? ' · 지대 ' + escv(jdOf(x)) : '') + '<br>' +
             '토지단가 <b>' + fmtWon(x.p) + '</b> 원/㎡' +
             (x.g ? ' · 공시지가 ' + fmtWon(x.g) : '') +
-            (x.r ? ' · 개공비율 <b>' + Number(x.r).toFixed(3) + '</b>' : '');
+            (x.r ? ' · 개공비율 <b>' + Number(x.r).toFixed(3) + '</b>' : '') +
+            allocHtml(x);
+    }
+
+    // 배분사례(t=2) — 건물을 어떤 값으로 빼고 토지단가를 냈는지
+    function allocHtml(x) {
+        var d = x.d;
+        if (x.t !== 2 || !d) return '';
+        function row(k, v) { return '<tr><td class="k">' + k + '</td><td class="v">' + v + '</td></tr>'; }
+        var h = '<div class="fm-alloc"><div class="ttl">배분 근거</div><table>';
+        if (d.uc) h += row('재조달 표준단가' + (d.gr ? ' (급수' + d.gr + ')' : ''),
+                           '<b>' + fmtWon(d.uc) + '</b> 원/㎡');
+        if (d.life) h += row('내용연수 · 경과연수',
+                             d.life + '년 · ' + (d.age ? d.age.toFixed(1) : '–') + '년');
+        if (d.res != null) h += row('잔가율 (정액법)', (d.res * 100).toFixed(1) + '%');
+        if (d.ba) h += row('건물 공부면적', fmtWon(Math.round(d.ba * 100) / 100) + ' ㎡');
+        if (d.bp) h += row('건물가격', fmtWon(Math.round(d.bp)) + ' 원');
+        if (d.amt) h += row('거래금액', fmtWon(d.amt) + ' 원');
+        if (d.lp) h += row('토지배분액', '<b>' + fmtWon(Math.round(d.lp)) + '</b> 원');
+        if (d.la) h += row('토지 거래면적', fmtWon(Math.round(d.la * 10) / 10) + ' ㎡');
+        h += '</table><div class="eq">건물가격 = 표준단가 × 잔가율 × 건물면적<br>' +
+             '토지단가 = (거래금액 − 건물가격) ÷ 토지면적</div></div>';
+        return h;
     }
 
     function anchorOf(x) {
