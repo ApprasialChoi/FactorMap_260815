@@ -116,7 +116,13 @@
     .vm.t0 .vm-top { background: #7c3aed; }
     .vm.t1 .vm-top { background: #0d9488; }
     .vm.t2 .vm-top { background: #c2410c; }
-    .vm-p { padding: 1px 6px 2px; text-align: center; font-size: 11.5px; font-weight: 800; color: #1a365d; font-variant-numeric: tabular-nums; }
+    .vm-bot { display: flex; align-items: stretch; }
+    .vm-p { flex: 1; padding: 1px 6px 2px; text-align: center; font-size: 11.5px; font-weight: 800; color: #1a365d; font-variant-numeric: tabular-nums; }
+    .vm-r {
+        display: flex; align-items: center; padding: 0 6px; font-size: 10.5px; font-weight: 800;
+        color: #0051af; background: #f0f7ff; border-left: 1px solid #dbe7f5;
+        font-variant-numeric: tabular-nums;
+    }
     .vm.t2 { border-style: dashed; border-color: #c2410c; }
     .vm.t2 .vm-p::after { content: '배분'; font-size: 8.5px; font-weight: 700; color: #c2410c; margin-left: 3px; vertical-align: 1px; }
     .vm-more {
@@ -637,7 +643,9 @@
                 '<div class="vm-loc">' + escv(loc) + '</div>' +
                 '<div class="vm-top"><span class="vm-z">' + zshort(x.z) + '</span>' +
                 '<span class="vm-j">' + escv(jdOf(x) || META.uses[x.u]) + '</span></div>' +
-                '<div class="vm-p">' + fmtWon(x.p) + '</div></div>';
+                '<div class="vm-bot"><span class="vm-p">' + fmtWon(x.p) + '</span>' +
+                (x.r ? '<span class="vm-r">' + Number(x.r).toFixed(2) + '</span>' : '') +
+                '</div></div>';
             el.firstChild.onclick = function () { showInfo(KLL(an), vmPopup(x)); };
             var ov = new kakao.maps.CustomOverlay({position: KLL(an), content: el,
                 yAnchor: 1.12, xAnchor: 0.5, zIndex: 20, clickable: true});
