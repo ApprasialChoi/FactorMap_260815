@@ -88,6 +88,16 @@ def jidx(s):
 def main():
     wb = openpyxl.load_workbook(SRC, data_only=True)
     rows, drop = [], Counter()
+    purposes, pidx = [], {}
+
+    def puidx(v):
+        t = re.sub(r'\s+', ' ', str(v or '')).strip()
+        if not t:
+            return None
+        if t not in pidx:
+            pidx[t] = len(purposes)
+            purposes.append(t)
+        return pidx[t]
 
     # ── t=0 평가사례 (Ver1 선별분) ──
     ws = wb['평가사례']
@@ -115,7 +125,8 @@ def main():
         if u < 0:
             drop['평가:지목 제외그룹(도로 등)'] += 1
             continue
-        rows.append({'t': 0, 's': toks[1], 'e': toks[2], 'l': toks[3],
+        rows.append({'t': 0, 'pu': puidx(ws.cell(r, 1).value),
+                     's': toks[1], 'e': toks[2], 'l': toks[3],
                      'z': zidx(ws.cell(r, 20).value), 'u': u,
                      'j': jidx(jd), 'y': int(y) if y.isdigit() else 0,
                      'r': round(rt, 3) if rt else None,
@@ -305,6 +316,7 @@ def main():
 
     meta = {'zones': ZONES, 'nzchip': 12, 'uses': USES, 'nuchip': 4, 'jd': JD,
             'types': ['평가사례', '거래사례', '거래사례(배분)', '표준지'],
+            'purposes': purposes,
             'alloc': n_by_t[2], 'built': time.strftime('%Y-%m-%d %H:%M'), 'n': len(rows)}
     with open(os.path.join(OUT, 'records.js'), 'w', encoding='utf-8') as f:
         f.write('window.FM_META = ' + json.dumps(meta, ensure_ascii=False) + ';\n')

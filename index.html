@@ -208,6 +208,7 @@
     .vm-top { display: flex; font-size: 10px; font-weight: 700; color: #fff; }
     .vm-top span { padding: 1.5px 6px; }
     .vm-top .vm-j { background: rgba(0,0,0,.18); }
+    .vm-top .vm-pu { background: rgba(255,255,255,.28); font-size: 9.5px; }
     .vm.t0 .vm-top { background: #7c3aed; }
     .vm.t1 .vm-top { background: #0d9488; }
     .vm.t2 .vm-top { background: #c2410c; }
@@ -411,9 +412,9 @@
 
 <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=231190ac1aca72ada0b739110d8a0eb4&libraries=services"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="data/records.js?v=202608231645"></script>
-<script src="data/boundaries.js?v=202608231645"></script>
-<script src="data/parcels.js?v=202608231645"></script>
+<script src="data/records.js?v=202608232129"></script>
+<script src="data/boundaries.js?v=202608232129"></script>
+<script src="data/parcels.js?v=202608232129"></script>
 <script>
 (function () {
     'use strict';
@@ -924,6 +925,17 @@
         return ZSHORT[z] || z.replace('지역', '').replace('구역', '');
     }
     function jdOf(x) { return (META.jd && META.jd[x.j] != null) ? META.jd[x.j] : ''; }
+    // 평가목적 — 평가사례(t=0)만 보유
+    var PURPOSES = META.purposes || [];
+    function puOf(x) { return (x.t === 0 && x.pu != null) ? (PURPOSES[x.pu] || '') : ''; }
+    var PU_SHORT = {'법원경매': '경매', '담보': '담보', '기타 담보': '담보', '시가참고': '시가',
+                    '자산재평가': '재평가', '자산재평가(IFRS)': '재평가', '조세': '조세',
+                    '공매(국세,지방세)': '공매', '공매(국공유재산)': '공매', '공매(NPL)': '공매',
+                    '민사소송': '소송', '일반소송': '소송', '기타': '기타'};
+    function puShort(x) {
+        var p = puOf(x);
+        return p ? (PU_SHORT[p] || p.slice(0, 3)) : '';
+    }
     function fmtWon(v) { return v == null ? '–' : Number(v).toLocaleString('ko-KR'); }
     function escv(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
         return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
@@ -952,6 +964,7 @@
         return '<h4>' + TYPES[x.t] +
             (x.t === 2 ? ' · <span style="color:#c2410c;">' + ((x.q || 0) === 0 ? 'O 사용가능' : '△ 검토필요') + '</span>' : '') + '</h4>' +
             escv(x.a || (x.s + ' ' + x.e + ' ' + x.l)) + '<br>' +
+            (puOf(x) ? '평가목적 <b>' + escv(puOf(x)) + '</b><br>' : '') +
             '연도 ' + (x.y || '–') + ' · ' + escv(META.zones[x.z]) +
             (jdOf(x) ? ' · 지대 ' + escv(jdOf(x)) : '') + '<br>' +
             '토지단가 <b>' + fmtWon(x.p) + '</b> 원/㎡' +
@@ -1043,7 +1056,9 @@
                 (x._new ? ' added' : '') + '">' +
                 '<div class="vm-loc">' + escv(loc) + '</div>' +
                 '<div class="vm-top"><span class="vm-z">' + zshort(x.z) + '</span>' +
-                '<span class="vm-j">' + escv(jdOf(x) || META.uses[x.u]) + '</span></div>' +
+                '<span class="vm-j">' + escv(jdOf(x) || META.uses[x.u]) + '</span>' +
+                (puShort(x) ? '<span class="vm-pu">' + escv(puShort(x)) + '</span>' : '') +
+                '</div>' +
                 '<div class="vm-bot"><span class="vm-p">' + fmtWon(x.t === 3 ? x.g : x.p) + '</span>' +
                 (x.r ? '<span class="vm-r">' + Number(x.r).toFixed(2) + '</span>' : '') +
                 '</div></div>' +
@@ -1191,10 +1206,11 @@
     function buildSheets() {
         var sel = LAST_SEL;
         // ① 사례 목록
-        var head = ['유형', '시군구', '읍면', '리', '용도지역', '이용상황', '연도',
+        var head = ['유형', '평가목적', '소재지', '시군구', '읍면', '리', '용도지역', '이용상황', '연도',
                     '토지단가(원/㎡)', '개별공시지가(원/㎡)', '개공비율', '배분품질', '비고'];
         var data = sel.map(function (x) {
-            return [TYPES[x.t], x.s, x.e, x.l, META.zones[x.z], META.uses[x.u], x.y || '',
+            return [TYPES[x.t], puOf(x), x.a || (x.s + ' ' + x.e + ' ' + x.l),
+                    x.s, x.e, x.l, META.zones[x.z], META.uses[x.u], x.y || '',
                     x.p || '', x.g || '', x.r,
                     x.t === 2 ? ((x.q || 0) === 0 ? 'O 사용가능' : '△ 검토필요') : '',
                     x._new ? '직접 추가' :
@@ -1762,7 +1778,7 @@
                 '<textarea class="cm-note" data-note="' + c + '" rows="1" placeholder="의견 — 이 칸(용도지역×이용상황) 선정 근거·메모">' +
                 escv(CART.notes[c] || '') + '</textarea>' +
                 (arr.length === 0 ? '' :
-                '<table class="cm-tbl"><tr><th>확정</th><th>유형</th><th>소재지</th><th>연도</th>' +
+                '<table class="cm-tbl"><tr><th>확정</th><th>유형</th><th>목적</th><th>소재지</th><th>연도</th>' +
                 '<th>토지단가</th><th>공시지가</th><th>개공비율</th><th></th></tr>' +
                 arr.map(function (i) {
                     var x = ROWS[i];
@@ -1773,6 +1789,7 @@
                             ' 란 확정 토글">★</span></td>' +
                         '<td class="cm-typ" style="color:' + TCOLOR[x.t] + '">' + TSHORT[x.t] +
                             (x.t === 2 ? ((x.q || 0) === 0 ? ' O' : ' △') : '') + '</td>' +
+                        '<td>' + escv(puShort(x)) + '</td>' +
                         '<td>' + escv(x.t === 3 ? (x.s !== '미상' ? x.s + ' ' + x.a : x.a)
                                                  : shortAddr(x.a || (x.s + ' ' + x.e + ' ' + x.l))) + '</td>' +
                         '<td>' + (x.y || '–') + '</td>' +
@@ -1782,6 +1799,8 @@
                         '<td><span class="cm-del" data-del="' + i + '" title="장바구니에서 빼기">&#10005;</span></td></tr>';
                 }).join('') + '</table>') + '</div>';
         });
+        h += '<div class="dl-row" style="margin-top:12px;">' +
+             '<button class="btn primary" id="cm-xlsx">엑셀로 내보내기</button></div>';
         document.getElementById('cm-title').textContent = CM_CELL
             ? MZL[MZ.indexOf(+CM_CELL.split('|')[0])] + ' × ' + MU[+CM_CELL.split('|')[1]] + ' 후보'
             : '후보 장바구니 전체';
@@ -1793,6 +1812,8 @@
         Array.prototype.forEach.call(body.querySelectorAll('[data-del]'), function (b) {
             b.onclick = function () { toggleCart(+b.getAttribute('data-del')); openCartModal(CM_CELL); };
         });
+        var xb = body.querySelector('#cm-xlsx');
+        if (xb) xb.onclick = exportCart;
         Array.prototype.forEach.call(body.querySelectorAll('[data-note]'), function (ta) {
             ta.oninput = function () {
                 var c = ta.getAttribute('data-note');
@@ -1804,6 +1825,57 @@
         });
         md.style.display = 'flex';
     }
+    function exportCart() {
+        if (!CART.items.length) { alert('담긴 후보가 없습니다.'); return; }
+        if (typeof XLSX === 'undefined') { alert('엑셀 라이브러리를 불러오지 못했습니다.'); return; }
+        var order = {};
+        MZ.forEach(function (z, ri) { for (var u = 0; u < 3; u++) order[z + '|' + u] = ri * 3 + u; });
+        var arr = CART.items.slice().filter(function (i) { return cellOf(ROWS[i]); });
+        arr.sort(function (a, b) {
+            var ca = cellOf(ROWS[a]), cb = cellOf(ROWS[b]);
+            return (order[ca] || 99) - (order[cb] || 99) || ROWS[a].t - ROWS[b].t ||
+                   (ROWS[b].y || 0) - (ROWS[a].y || 0);
+        });
+        var head = ['용도지역', '이용상황', '확정', '유형', '평가목적', '소재지',
+                    '시군구', '읍면', '리', '연도', '토지단가(원/㎡)', '개별공시지가(원/㎡)',
+                    '개공비율', '배분품질', '의견', '비고'];
+        var data = arr.map(function (i) {
+            var x = ROWS[i], c = cellOf(x), e = CART.conf[c] || {};
+            var cf = (e.p === i) ? '평가사례 확정' : (e.g === i) ? '거래사례 확정'
+                   : (e.s === i) ? '표준지 확정' : '';
+            return [MZL[MZ.indexOf(+c.split('|')[0])], MU[+c.split('|')[1]], cf, TYPES[x.t],
+                    puOf(x), x.a || (x.s + ' ' + x.e + ' ' + x.l),
+                    x.s, x.e, x.l, x.y || '', x.p || '', x.g || '', x.r,
+                    x.t === 2 ? ((x.q || 0) === 0 ? 'O 사용가능' : '△ 검토필요') : '',
+                    (CART.notes[c] || '').replace(/\s+/g, ' ').trim(),
+                    x._new ? '직접 추가' :
+                    (x._ov ? '재조달 ' + x.d.uc.toLocaleString('ko-KR') +
+                             ' · 내용연수 ' + x.d.life + '년으로 수정' : '')];
+        });
+        // 칸별 선정 현황 (평·거·표 확정 여부)
+        var s2 = [['용도지역', '이용상황', '후보 수', '평가사례 확정', '거래사례 확정', '표준지 확정', '의견']];
+        var cnt = {};
+        CART.items.forEach(function (i) {
+            var c = cellOf(ROWS[i]);
+            if (c) cnt[c] = (cnt[c] || 0) + 1;
+        });
+        MZ.forEach(function (z, ri) {
+            for (var u = 0; u < 3; u++) {
+                var c = z + '|' + u, e = CART.conf[c] || {}, note = (CART.notes[c] || '').trim();
+                if (!cnt[c] && !note) continue;
+                function nm(i2) {
+                    return i2 == null ? '' : (ROWS[i2].a || (ROWS[i2].s + ' ' + ROWS[i2].e + ' ' + ROWS[i2].l));
+                }
+                s2.push([MZL[ri], MU[u], cnt[c] || 0, nm(e.p), nm(e.g), nm(e.s),
+                         note.replace(/\s+/g, ' ')]);
+            }
+        });
+        var wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([head].concat(data)), '후보목록');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s2), '칸별 선정현황');
+        XLSX.writeFile(wb, '후보장바구니_' + stamp() + '.xlsx');
+    }
+
     function closeCartModal() { document.getElementById('cart-modal').style.display = 'none'; }
 
     // ── 토지단가 범위 ──
