@@ -38,6 +38,7 @@
     .chip.c-type0.active { background: #7c3aed; }
     .chip.c-type1.active { background: #0d9488; }
     .chip.c-type2.active { background: #c2410c; }
+    .chip.c-type3.active { background: #475569; }
     .chip.c-all.active { background: #4a5568; }
     .chip.c-metric.active { background: #0051af; }
 
@@ -116,6 +117,7 @@
     .vm.t0 .vm-top { background: #7c3aed; }
     .vm.t1 .vm-top { background: #0d9488; }
     .vm.t2 .vm-top { background: #c2410c; }
+    .vm.t3 .vm-top { background: #475569; }
     .vm-bot { display: flex; align-items: stretch; }
     .vm-p { flex: 1; padding: 1px 6px 2px; text-align: center; font-size: 11.5px; font-weight: 800; color: #1a365d; font-variant-numeric: tabular-nums; }
     .vm-r {
@@ -125,6 +127,7 @@
     }
     .vm.t2 { border-style: dashed; border-color: #c2410c; }
     .vm.t2 .vm-p::after { content: '배분'; font-size: 8.5px; font-weight: 700; color: #c2410c; margin-left: 3px; vertical-align: 1px; }
+    .vm.t3 .vm-p::after { content: '공시'; font-size: 8.5px; font-weight: 700; color: #475569; margin-left: 3px; vertical-align: 1px; }
     .vm-more {
         background: rgba(26,54,93,.88); color: #fff; border-radius: 12px;
         padding: 3px 10px; font-size: 11px; font-weight: 700; white-space: nowrap;
@@ -253,9 +256,9 @@
 
 <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=231190ac1aca72ada0b739110d8a0eb4"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="data/records.js?v=202608212119"></script>
-<script src="data/boundaries.js?v=202608212119"></script>
-<script src="data/parcels.js?v=202608212119"></script>
+<script src="data/records.js?v=202608231645"></script>
+<script src="data/boundaries.js?v=202608231645"></script>
+<script src="data/parcels.js?v=202608231645"></script>
 <script>
 (function () {
     'use strict';
@@ -322,8 +325,10 @@
         if (zk.length && !S.zones[x.z]) return false;
         var uk = Object.keys(S.uses);
         if (uk.length && !S.uses[x.u]) return false;
-        if (S.yearMin && x.y < S.yearMin) return false;
-        if (!isFinite(val(x)) || val(x) <= 0) return false;   // 토지단가 미기재분 제외
+        if (x.t !== 3) {                                     // 표준지는 기간·지표 무관 (공시 기준)
+            if (S.yearMin && x.y < S.yearMin) return false;
+            if (!isFinite(val(x)) || val(x) <= 0) return false;   // 토지단가 미기재분 제외
+        }
         return true;
     }
     function pass(x) {
@@ -544,6 +549,7 @@
     function riAgg() {
         var by = {};
         ROWS.forEach(function (x) {
+            if (x.t === 3) return;                 // 표준지 — 지표 없음
             if (!passNoRi(x)) return;
             var k = x.s + '|' + x.e + '|' + x.l;
             (by[k] = by[k] || []).push(val(x));
@@ -581,7 +587,7 @@
     // ───────── 밸류맵식 개별 마커 (카카오 레벨 6 이하 · 화면 범위 · 필지 외곽선) ─────────
     var PARCELS = window.FM_PARCELS || {};
     var VM_LEVEL = 6, VM_CAP = 600;
-    var TCOLOR = ['#7c3aed', '#0d9488', '#c2410c'];
+    var TCOLOR = ['#7c3aed', '#0d9488', '#c2410c', '#475569'];
     var ZSHORT = {'제1종전용주거지역': '1종전주', '제2종전용주거지역': '2종전주',
                   '제1종일반주거지역': '1종일주', '제2종일반주거지역': '2종일주',
                   '제3종일반주거지역': '3종일주', '자연환경보전지역': '자연환경',
@@ -595,7 +601,27 @@
     function escv(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
         return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
 
+    function stdHtml(x) {
+        var d = x.sp || {};
+        function row(k, v) {
+            if (v == null || v === '') return '';
+            return '<tr><td class="k">' + k + '</td><td class="v">' + escv(v) + '</td></tr>';
+        }
+        return '<div class="fm-alloc"><div class="ttl" style="color:#475569">표준지 특성</div><table>' +
+            row('지목', d.jm) + row('이용상황', d.us) +
+            row('용도지역1', META.zones[x.z]) + row('용도지역2', d.z2) +
+            row('도로교통', d.rd) + row('형상', d.sh) +
+            row('계획시설', d.pf) + row('저촉률', d.pr) +
+            row('기타제한', d.et) +
+            '</table></div>';
+    }
+
     function vmPopup(x) {
+        if (x.t === 3) {
+            return '<h4>표준지</h4>' + escv((x.s !== '미상' ? x.s + ' ' : '') + x.a) + '<br>' +
+                '공시년도 ' + (x.y || '–') + ' · 공시지가 <b>' + fmtWon(x.g) + '</b> 원/㎡' +
+                stdHtml(x);
+        }
         return '<h4>' + TYPES[x.t] +
             (x.t === 2 ? ' · <span style="color:#c2410c;">' + ((x.q || 0) === 0 ? 'O 사용가능' : '△ 검토필요') + '</span>' : '') + '</h4>' +
             escv(x.a || (x.s + ' ' + x.e + ' ' + x.l)) + '<br>' +
@@ -651,7 +677,8 @@
         }
         var total = cand.length;
         // 상한 초과 시 희소 유형(배분·거래)이 평가사례에 밀려 안 보이는 일이 없도록 유형 우선
-        if (total > VM_CAP) cand.sort(function (a, b) { return b.t - a.t; });
+        var PRIO = {2: 0, 1: 1, 0: 2, 3: 3};   // 배분·거래 우선, 표준지는 맨 뒤
+        if (total > VM_CAP) cand.sort(function (a, b) { return PRIO[a.t] - PRIO[b.t]; });
         var sel = cand.slice(0, VM_CAP);
         sel.forEach(function (x) {
             var an = anchorOf(x);
@@ -678,7 +705,7 @@
                 '<div class="vm-loc">' + escv(loc) + '</div>' +
                 '<div class="vm-top"><span class="vm-z">' + zshort(x.z) + '</span>' +
                 '<span class="vm-j">' + escv(jdOf(x) || META.uses[x.u]) + '</span></div>' +
-                '<div class="vm-bot"><span class="vm-p">' + fmtWon(x.p) + '</span>' +
+                '<div class="vm-bot"><span class="vm-p">' + fmtWon(x.t === 3 ? x.g : x.p) + '</span>' +
                 (x.r ? '<span class="vm-r">' + Number(x.r).toFixed(2) + '</span>' : '') +
                 '</div></div>';
             el.firstChild.onclick = function () { showInfo(KLL(an), vmPopup(x)); };
@@ -875,7 +902,7 @@
         LAST_SEL = sel;
         document.getElementById('cnt-sel').textContent = sel.length.toLocaleString();
         document.getElementById('cnt-all').textContent = ROWS.length.toLocaleString();
-        renderStats(sel);
+        renderStats(sel.filter(function (x) { return x.t !== 3; }));
         renderMapAndList();
         renderBounds();
         renderMarkers();
@@ -891,7 +918,7 @@
             var zk = Object.keys(S.zones); if (zk.length && !S.zones[x.z]) return;
             var uk = Object.keys(S.uses); if (uk.length && !S.uses[x.u]) return;
             if (S.yearMin && x.y < S.yearMin) return;
-            if (!isFinite(val(x)) || val(x) <= 0) noVal++;
+            if (x.t !== 3 && (!isFinite(val(x)) || val(x) <= 0)) noVal++;
         });
         document.getElementById('dl-note').innerHTML =
             '선택 <b>' + sel.length.toLocaleString() + '</b>건 · 시트 4개(사례목록·통계·리별·추출조건)' +
