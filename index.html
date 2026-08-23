@@ -370,8 +370,10 @@
             function (it) { return !!S.q[it.v]; },
             function (it) { S.q[it.v] = !S.q[it.v]; });
 
+        // 지역 칩은 평가사례·거래사례 소재지만으로 구성 (표준지 동네 나열 방지)
+        function regionRow(x) { return x.t === 0 || x.t === 1; }
         var sggs = {};
-        ROWS.forEach(function (x) { sggs[x.s] = 1; });
+        ROWS.forEach(function (x) { if (regionRow(x)) sggs[x.s] = 1; });
         chipRow(document.getElementById('f-sgg'),
             [{label: '전체', v: null}].concat(Object.keys(sggs).sort().map(function (s) { return {label: s, v: s}; })),
             function (it) { return S.sgg === it.v; },
@@ -379,7 +381,7 @@
             function (it) { return it.v === null ? 'c-all' : ''; });
 
         var emds = {};
-        ROWS.forEach(function (x) { if (!S.sgg || x.s === S.sgg) emds[x.e] = 1; });
+        ROWS.forEach(function (x) { if (regionRow(x) && (!S.sgg || x.s === S.sgg)) emds[x.e] = 1; });
         chipRow(document.getElementById('f-emd'),
             [{label: '읍면 전체', v: null}].concat(Object.keys(emds).sort().map(function (e) { return {label: e, v: e}; })),
             function (it) { return S.emd === it.v; },
@@ -388,6 +390,7 @@
 
         var ris = {};
         ROWS.forEach(function (x) {
+            if (!regionRow(x)) return;
             if ((!S.sgg || x.s === S.sgg) && (!S.emd || x.e === S.emd)) ris[x.s + '|' + x.e + '|' + x.l] = x.l;
         });
         var riItems = Object.keys(ris).sort().map(function (k) { return {label: ris[k], v: k}; });
