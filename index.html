@@ -42,6 +42,20 @@
     .chip.c-all.active { background: #4a5568; }
     .chip.c-metric.active { background: #0051af; }
 
+    /* ===== 사례 직접 추가 ===== */
+    .af-grid { display: grid; grid-template-columns: 82px 1fr 82px 1fr; gap: 7px 8px; align-items: center; font-size: 11.5px; }
+    .af-grid > label { color: #718096; font-weight: 700; text-align: right; }
+    .af-grid input, .af-grid select {
+        width: 100%; padding: 5px 7px; border: 1.5px solid #e2e8f0; border-radius: 7px;
+        font-family: inherit; font-size: 11.5px; color: #2d3748; background: #fff;
+    }
+    .af-grid input:focus, .af-grid select:focus { outline: none; border-color: #0051af; }
+    .af-grid .full { grid-column: 2 / -1; }
+    .af-grid input.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .af-req { border-color: #fca5a5 !important; background: #fff5f5 !important; }
+    .af-calc { color: #0051af; font-weight: 700; }
+    .vm.added { border-color: #0051af; border-style: dotted; border-width: 2px; }
+
     /* ===== 토지단가 범위 ===== */
     .rng-row { display: flex; align-items: center; gap: 5px; }
     .rng-row input {
@@ -315,6 +329,14 @@
         </div>
 
         <div class="filter-section">
+            <label>사례 직접 추가 <small>— 누락된 평가·거래사례 입력</small></label>
+            <div class="dl-row">
+                <button class="btn primary" id="btn-add-case">＋ 사례 추가</button>
+                <button class="btn" id="btn-add-list">추가한 사례 (<span id="add-n">0</span>)</button>
+            </div>
+        </div>
+
+        <div class="filter-section">
             <label>후보 장바구니 <small>— 용도지역 × 이용상황 · 칸마다 평·거·표 각 1건 확정</small></label>
             <table id="cart-matrix"></table>
             <div class="dl-row" style="margin-top:7px;">
@@ -365,6 +387,14 @@
     </div>
 </div>
 
+<div id="add-modal" style="position:fixed; inset:0; background:rgba(15,23,42,.45); z-index:5200; display:none; align-items:center; justify-content:center;">
+    <div class="cm-box" style="width:min(600px,94vw);">
+        <div class="cm-head"><b id="am-title">사례 직접 추가</b><span class="cm-x">&#10005;</span></div>
+        <div class="cm-body" id="am-body"></div>
+    </div>
+</div>
+<datalist id="dl-sgg"></datalist><datalist id="dl-emd"></datalist><datalist id="dl-ri"></datalist>
+
 <div id="cart-modal">
     <div class="cm-box">
         <div class="cm-head"><b id="cm-title">후보 장바구니</b><span class="cm-x">&#10005;</span></div>
@@ -379,7 +409,7 @@
     <button id="btn-lbl-reset" title="드래그로 옮긴 라벨을 모두 제자리로" style="display:none;">↺ 라벨 위치 초기화</button>
 </div>
 
-<script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=231190ac1aca72ada0b739110d8a0eb4"></script>
+<script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=231190ac1aca72ada0b739110d8a0eb4&libraries=services"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="data/records.js?v=202608231645"></script>
 <script src="data/boundaries.js?v=202608231645"></script>
@@ -388,7 +418,18 @@
 (function () {
     'use strict';
     var META = window.FM_META, ROWS = window.FM_ROWS, CENTERS = window.FM_CENTERS;
+    // 사용자가 직접 추가한 사례 — 원본 데이터와 같은 자격으로 합류 (브라우저 저장)
+    try {
+        (JSON.parse(localStorage.getItem('fmAdd1') || '[]') || []).forEach(function (x) {
+            if (x && x._id) { x._new = true; ROWS.push(x); }
+        });
+    } catch (e) {}
     ROWS.forEach(function (x, i) { x._i = i; });
+    ROWS.forEach(function (x) {                       // 신규 리는 중심좌표도 등록 (지도 라벨용)
+        if (!x._new || !x.ll) return;
+        var k = x.s + '|' + x.e + '|' + x.l;
+        if (!CENTERS[k]) CENTERS[k] = x.ll;
+    });
 
     // ───────── 상태 ─────────
     var TYPES = META.types || ['평가사례', '거래사례'];
@@ -443,6 +484,7 @@
 
     // ───────── 필터 ─────────
     function basePass(x) {
+        if (x._del) return false;                // 사용자가 지운 추가 사례
         if (CART_ONLY) return !!x._c;            // 선정만 지도표시 — 다른 필터 무시
         if (!S.types[x.t]) return false;
         if (x.t === 2 && !S.q[x.q || 0]) return false;       // 배분사례 품질(O/△)
@@ -682,6 +724,7 @@
         el.querySelector('.fm-pop-x').onclick = function () { infoOv.setMap(null); infoOv = null; };
         wireCartBtn(el);
         if (x && x.t === 2 && x.d) wireAlloc(el, x);
+        if (x && x._new) wireAddEdit(el, x);
         infoOv = new kakao.maps.CustomOverlay({position: pos, content: el, yAnchor: 1.18, zIndex: 60, clickable: true});
         infoOv.setMap(KM);
     }
@@ -914,7 +957,7 @@
             '토지단가 <b>' + fmtWon(x.p) + '</b> 원/㎡' +
             (x.g ? ' · 공시지가 ' + fmtWon(x.g) : '') +
             (x.r ? ' · 개공비율 <b>' + Number(x.r).toFixed(3) + '</b>' : '') +
-            allocHtml(x) + cartBtnHtml(x);
+            allocHtml(x) + addEditHtml(x) + cartBtnHtml(x);
     }
 
     // 배분사례(t=2) — 건물을 어떤 값으로 빼고 토지단가를 냈는지
@@ -996,7 +1039,8 @@
             var toks = String(x.a || '').split(' ');
             var loc = x.l + (toks.length === 5 ? ' ' + toks[4] : '');
             var el = document.createElement('div');
-            el.innerHTML = '<div class="vm t' + x.t + (x._ov ? ' edited' : '') + '">' +
+            el.innerHTML = '<div class="vm t' + x.t + (x._ov ? ' edited' : '') +
+                (x._new ? ' added' : '') + '">' +
                 '<div class="vm-loc">' + escv(loc) + '</div>' +
                 '<div class="vm-top"><span class="vm-z">' + zshort(x.z) + '</span>' +
                 '<span class="vm-j">' + escv(jdOf(x) || META.uses[x.u]) + '</span></div>' +
@@ -1153,8 +1197,9 @@
             return [TYPES[x.t], x.s, x.e, x.l, META.zones[x.z], META.uses[x.u], x.y || '',
                     x.p || '', x.g || '', x.r,
                     x.t === 2 ? ((x.q || 0) === 0 ? 'O 사용가능' : '△ 검토필요') : '',
-                    x._ov ? '재조달 ' + x.d.uc.toLocaleString('ko-KR') +
-                            ' · 내용연수 ' + x.d.life + '년으로 수정' : ''];
+                    x._new ? '직접 추가' :
+                    (x._ov ? '재조달 ' + x.d.uc.toLocaleString('ko-KR') +
+                             ' · 내용연수 ' + x.d.life + '년으로 수정' : '')];
         });
         // ② 통계
         var st = LAST_ST;
@@ -1274,6 +1319,241 @@
                      noVal.toLocaleString() + '건은 통계에서 제외됨</span>' : '');
     }
 
+    // ───────── 사례 직접 추가 (평가·거래) ─────────
+    var AM = document.getElementById('add-modal'), AM_EDIT = null;
+
+    function addedRows() { return ROWS.filter(function (x) { return x._new && !x._del; }); }
+    function saveAdded() {
+        try {
+            localStorage.setItem('fmAdd1', JSON.stringify(addedRows().map(function (x) {
+                return {_id: x._id, t: x.t, s: x.s, e: x.e, l: x.l, y: x.y, z: x.z, u: x.u,
+                        j: x.j, p: x.p, g: x.g, r: x.r, q: x.q, a: x.a, ll: x.ll};
+            })));
+        } catch (e) {}
+        var n = document.getElementById('add-n');
+        if (n) n.textContent = addedRows().length;
+    }
+    function dropFromCart(x) {          // 지운 사례가 장바구니에 남지 않게
+        var i = x._i, at = CART.items.indexOf(i);
+        if (at >= 0) CART.items.splice(at, 1);
+        Object.keys(CART.conf).forEach(function (c) {
+            var e = CART.conf[c];
+            ['p', 'g', 's'].forEach(function (sl) { if (e[sl] === i) delete e[sl]; });
+            if (e.p == null && e.g == null && e.s == null) delete CART.conf[c];
+        });
+        markCartFlags();
+        saveCart();
+    }
+
+    function addEditHtml(x) {
+        if (!x._new) return '';
+        return '<div style="margin-top:7px; display:flex; gap:5px;">' +
+            '<button class="al-rst" data-add-edit style="border-color:#0051af;color:#0051af;">✏️ 수정</button>' +
+            '<button class="al-rst" data-add-del style="border-color:#e53e3e;color:#c53030;">🗑 삭제</button></div>';
+    }
+    function wireAddEdit(el, x) {
+        var eb = el.querySelector('[data-add-edit]'), db = el.querySelector('[data-add-del]');
+        if (eb) eb.onclick = function () { openAddForm(x); };
+        if (db) db.onclick = function () {
+            if (!confirm('이 사례를 지울까요?\n' + (x.a || ''))) return;
+            x._del = true;
+            dropFromCart(x);
+            saveAdded();
+            if (infoOv) { infoOv.setMap(null); infoOv = null; INFO_X = null; }
+            refresh();
+            renderMatrix();
+        };
+    }
+
+    function fillDatalists() {
+        [['dl-sgg', 's'], ['dl-emd', 'e'], ['dl-ri', 'l']].forEach(function (pr) {
+            var seen = {}, el = document.getElementById(pr[0]);
+            ROWS.forEach(function (x) { if (x.t < 3 && x[pr[1]]) seen[x[pr[1]]] = 1; });
+            el.innerHTML = Object.keys(seen).sort().map(function (v) {
+                return '<option value="' + escv(v) + '"></option>'; }).join('');
+        });
+    }
+
+    function amField(id, label, html) {
+        return '<label for="' + id + '">' + label + '</label>' + html;
+    }
+    function openAddForm(x) {
+        AM_EDIT = x || null;
+        var v = x || {t: 0, y: new Date().getFullYear(), z: 11, u: 0};
+        var jb = '';
+        if (x && x.a) { var tk = x.a.split(' '); jb = tk.length >= 5 ? tk[4] : (tk[3] || ''); }
+        var zopt = META.zones.map(function (z, i) {
+            return '<option value="' + i + '"' + (i === v.z ? ' selected' : '') + '>' + escv(z) + '</option>'; }).join('');
+        var uopt = META.uses.map(function (u, i) {
+            return '<option value="' + i + '"' + (i === v.u ? ' selected' : '') + '>' + escv(u) + '</option>'; }).join('');
+        document.getElementById('am-title').textContent = x ? '추가 사례 수정' : '사례 직접 추가';
+        document.getElementById('am-body').innerHTML =
+            '<div class="af-grid" style="margin-top:10px;">' +
+            amField('am-t', '유형', '<select id="am-t"><option value="0"' + (v.t === 0 ? ' selected' : '') +
+                '>평가사례</option><option value="1"' + (v.t === 1 ? ' selected' : '') + '>거래사례</option></select>') +
+            amField('am-y', '연도', '<input id="am-y" class="num" type="number" min="1990" max="2100" value="' + (v.y || '') + '">') +
+            amField('am-s', '시군구', '<input id="am-s" list="dl-sgg" value="' + escv(v.s || '') + '" placeholder="예: 영암군">') +
+            amField('am-e', '읍면', '<input id="am-e" list="dl-emd" value="' + escv(v.e || '') + '" placeholder="예: 삼호읍">') +
+            amField('am-l', '리', '<input id="am-l" list="dl-ri" value="' + escv(v.l || '') + '" placeholder="예: 용앙리">') +
+            amField('am-jb', '지번', '<input id="am-jb" value="' + escv(jb) + '" placeholder="예: 417-6">') +
+            amField('am-z', '용도지역', '<select id="am-z">' + zopt + '</select>') +
+            amField('am-u', '이용상황', '<select id="am-u">' + uopt + '</select>') +
+            amField('am-p', '토지단가', '<input id="am-p" class="num" type="number" min="0" step="1000" value="' +
+                (v.p || '') + '" placeholder="원/㎡">') +
+            amField('am-g', '공시지가', '<input id="am-g" class="num" type="number" min="0" step="1000" value="' +
+                (v.g || '') + '" placeholder="원/㎡ (선택)">') +
+            '<label>개공비율</label><div class="af-calc" id="am-r">–</div>' +
+            '<label>좌표</label><div id="am-ll" style="color:#718096;">' +
+                (v.ll ? v.ll[0].toFixed(6) + ', ' + v.ll[1].toFixed(6) : '저장할 때 주소로 자동 검색') + '</div>' +
+            '</div>' +
+            '<div class="stat-sub" id="am-note" style="margin-top:8px;">' +
+                '시군구·읍면·리는 기존 표기와 똑같이 적어야 지역 필터에서 함께 묶입니다.</div>' +
+            '<div class="dl-row" style="margin-top:10px;">' +
+                '<button class="btn primary" id="am-save">저장</button>' +
+                '<button class="btn" id="am-cancel">취소</button></div>';
+        fillDatalists();
+        function calcR() {
+            var p = parseFloat(document.getElementById('am-p').value) || 0;
+            var g = parseFloat(document.getElementById('am-g').value) || 0;
+            document.getElementById('am-r').textContent =
+                (p > 0 && g > 0) ? (Math.round(p / g * 1000) / 1000).toFixed(3) : '–';
+        }
+        ['am-p', 'am-g'].forEach(function (id) { document.getElementById(id).oninput = calcR; });
+        calcR();
+        document.getElementById('am-cancel').onclick = closeAdd;
+        document.getElementById('am-save').onclick = saveForm;
+        AM.style.display = 'flex';
+        setTimeout(function () { document.getElementById('am-s').focus(); }, 30);
+    }
+
+    function sidoOf(sgg) {                        // 기존 사례에서 시·도 표기를 그대로 따온다
+        var hit = null;
+        ROWS.some(function (x) {
+            if (x.t < 3 && x.s === sgg && x.a && x.a.split(' ').length >= 4) { hit = x.a.split(' ')[0]; return true; }
+            return false;
+        });
+        return hit;
+    }
+
+    function saveForm() {
+        var g_ = function (id) { return document.getElementById(id); };
+        var t = +g_('am-t').value, y = parseInt(g_('am-y').value, 10) || 0;
+        var sgg = g_('am-s').value.trim(), emd = g_('am-e').value.trim(), ri = g_('am-l').value.trim();
+        var jb = g_('am-jb').value.trim();
+        var z = +g_('am-z').value, u = +g_('am-u').value;
+        var p = Math.round(parseFloat(g_('am-p').value) || 0);
+        var gp = Math.round(parseFloat(g_('am-g').value) || 0);
+        var bad = [];
+        [['am-s', sgg], ['am-e', emd], ['am-l', ri]].forEach(function (pr) {
+            g_(pr[0]).classList.toggle('af-req', !pr[1]);
+            if (!pr[1]) bad.push(1);
+        });
+        g_('am-p').classList.toggle('af-req', !(p > 0));
+        if (!(p > 0)) bad.push(1);
+        if (bad.length) {
+            g_('am-note').innerHTML = '<span style="color:#c53030">시군구·읍면·리·토지단가는 반드시 입력해야 합니다.</span>';
+            return;
+        }
+        var sido = sidoOf(sgg);
+        var addr = (sido ? sido + ' ' : '') + sgg + ' ' + emd + ' ' + ri + (jb ? ' ' + jb : '');
+        g_('am-note').textContent = '주소로 좌표를 찾는 중…';
+        geocode(addr, function (ll, ok) {
+            if (!ll) ll = KM ? [KM.getCenter().getLat(), KM.getCenter().getLng()] : null;
+            var x = AM_EDIT;
+            var isNew = !x;
+            if (isNew) {
+                x = {_id: 'n' + Date.now() + Math.floor(Math.random() * 1000), _new: true};
+                x._i = ROWS.push(x) - 1;
+                CKEY[x._i] = x._id;
+                CIDX[x._id] = x._i;
+            }
+            x.t = t; x.y = y; x.s = sgg; x.e = emd; x.l = ri;
+            x.z = z; x.u = u; x.j = u; x.q = 0;
+            x.p = p; x.g = gp || null;
+            x.r = (p > 0 && gp > 0) ? Math.round(p / gp * 1000) / 1000 : null;
+            x.a = addr;
+            x.ll = ll;
+            var k = sgg + '|' + emd + '|' + ri;
+            if (ll && !CENTERS[k]) CENTERS[k] = ll;
+            saveAdded();
+            closeAdd();
+            refresh();
+            renderMatrix();
+            if (KM && ll) {
+                KM.setCenter(new kakao.maps.LatLng(ll[0], ll[1]));
+                if (KM.getLevel() > 4) KM.setLevel(4);
+            }
+            if (!ok) alert('주소로 좌표를 찾지 못해 지도 중심에 표시했습니다.\n' +
+                           '위치가 틀리면 사례를 눌러 [수정]에서 주소를 다듬어 주세요.\n' + addr);
+        });
+    }
+
+    function geocode(addr, cb) {
+        if (window.kakao && kakao.maps && kakao.maps.services) {
+            new kakao.maps.services.Geocoder().addressSearch(addr, function (res, st) {
+                if (st === kakao.maps.services.Status.OK && res && res[0]) {
+                    cb([+res[0].y, +res[0].x], true);
+                } else { cb(null, false); }
+            });
+        } else { cb(null, false); }
+    }
+
+    function openAddList() {
+        var arr = addedRows();
+        AM_EDIT = null;
+        document.getElementById('am-title').textContent = '직접 추가한 사례 (' + arr.length + '건)';
+        var h = arr.length ? '<table class="cm-tbl" style="margin-top:10px;"><tr><th>유형</th><th>소재지</th>' +
+            '<th>연도</th><th>용도지역</th><th>이용</th><th>토지단가</th><th>공시지가</th><th>개공비율</th><th></th></tr>' +
+            arr.map(function (x) {
+                return '<tr><td style="color:' + TCOLOR[x.t] + '">' + TSHORT[x.t] + '</td>' +
+                    '<td>' + escv(x.s + ' ' + x.e + ' ' + x.l) + '</td>' +
+                    '<td>' + (x.y || '–') + '</td>' +
+                    '<td>' + escv(META.zones[x.z]) + '</td>' +
+                    '<td>' + escv(META.uses[x.u]) + '</td>' +
+                    '<td>' + fmtWon(x.p) + '</td><td>' + fmtWon(x.g) + '</td>' +
+                    '<td>' + (x.r ? Number(x.r).toFixed(3) : '–') + '</td>' +
+                    '<td><span class="cm-del" data-ed="' + x._id + '" title="수정" style="color:#0051af">✏️</span>' +
+                    '<span class="cm-del" data-rm="' + x._id + '" title="삭제">&#10005;</span></td></tr>';
+            }).join('') + '</table>'
+            : '<div class="empty-state">직접 추가한 사례가 없습니다.<br>[＋ 사례 추가]로 누락된 평가·거래사례를 넣을 수 있습니다.</div>';
+        h += '<div class="dl-row" style="margin-top:10px;">' +
+             '<button class="btn primary" id="am-new">＋ 사례 추가</button>' +
+             '<button class="btn" id="am-cancel">닫기</button></div>';
+        var body = document.getElementById('am-body');
+        body.innerHTML = h;
+        Array.prototype.forEach.call(body.querySelectorAll('[data-ed]'), function (b) {
+            b.onclick = function () { openAddForm(byId(b.getAttribute('data-ed'))); };
+        });
+        Array.prototype.forEach.call(body.querySelectorAll('[data-rm]'), function (b) {
+            b.onclick = function () {
+                var x = byId(b.getAttribute('data-rm'));
+                if (!x || !confirm('이 사례를 지울까요?\n' + (x.a || ''))) return;
+                x._del = true;
+                dropFromCart(x);
+                saveAdded();
+                refresh();
+                renderMatrix();
+                openAddList();
+            };
+        });
+        document.getElementById('am-cancel').onclick = closeAdd;
+        document.getElementById('am-new').onclick = function () { openAddForm(null); };
+        AM.style.display = 'flex';
+    }
+    function byId(id) {
+        var hit = null;
+        ROWS.some(function (x) { if (x._id === id && !x._del) { hit = x; return true; } return false; });
+        return hit;
+    }
+    function closeAdd() { AM.style.display = 'none'; AM_EDIT = null; }
+
+    document.getElementById('btn-add-case').onclick = function () { openAddForm(null); };
+    document.getElementById('btn-add-list').onclick = openAddList;
+    AM.querySelector('.cm-x').onclick = closeAdd;
+    AM.onclick = function (ev) { if (ev.target === AM) closeAdd(); };
+    document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closeAdd(); });
+    saveAdded();
+
     // ───────── 후보 장바구니 — 용도지역 12 × 이용상황 3 매트릭스 ─────────
     //   · 담기: 사례 팝업 버튼 (평가·거래·배분)
     //   · 확정: 칸마다 평가 1건 + 거래(배분 포함) 1건 — 빈 란에 담으면 자동 확정, 모달 ★로 교체
@@ -1295,6 +1575,7 @@
     (function () {
         var seen = {};
         ROWS.forEach(function (x, i) {
+            if (x._id) { CKEY[i] = x._id; CIDX[x._id] = i; return; }
             var b = [x.t, x.a, x.y, x.p, x.g, x.r].join('|');
             seen[b] = (seen[b] || 0) + 1;
             CKEY[i] = b + '#' + seen[b];
