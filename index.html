@@ -49,9 +49,18 @@
     #cart-matrix td.mx { border: 1px solid #edf2f7; padding: 3px 1px; text-align: center; cursor: pointer; white-space: nowrap; }
     #cart-matrix td.mx:hover { background: #f0f7ff; }
     #cart-matrix td.mx.has { background: #f8fbff; }
-    .mp, .mg { display: inline-block; width: 15px; border-radius: 4px; color: #cbd5e0; border: 1px solid #e2e8f0; font-weight: 700; margin: 0 1px; }
+    .mp, .mg, .mo { display: inline-block; width: 15px; border-radius: 4px; color: #cbd5e0; border: 1px solid #e2e8f0; font-weight: 700; margin: 0 1px; }
+    .mp.lit { background: #ede9fe; border-color: #a78bfa; color: #7c3aed; }
+    .mg.lit { background: #ccfbf1; border-color: #5eead4; color: #0d9488; }
     .mp.on { background: #7c3aed; border-color: #7c3aed; color: #fff; }
     .mg.on { background: #0d9488; border-color: #0d9488; color: #fff; }
+    .mo.on { background: #f59e0b; border-color: #f59e0b; color: #fff; }
+    textarea.cm-note {
+        width: 100%; margin: 4px 0 2px; padding: 5px 8px; border: 1.5px solid #e2e8f0;
+        border-radius: 7px; font-family: inherit; font-size: 11.5px; color: #2d3748;
+        resize: vertical; min-height: 34px; background: #fffdf5;
+    }
+    textarea.cm-note:focus { outline: none; border-color: #f59e0b; }
     .mn { color: #0051af; font-weight: 800; margin-left: 2px; }
 
     .fm-cart-btn {
@@ -257,6 +266,7 @@
             <table id="cart-matrix"></table>
             <div class="dl-row" style="margin-top:7px;">
                 <button class="btn primary" id="btn-cart-view">장바구니 보기 (<span id="cart-n">0</span>)</button>
+                <button class="btn" id="btn-cart-map" title="장바구니에 담긴 사례만 지도·통계에 표시">선정만 지도표시</button>
                 <button class="btn" id="btn-cart-clear">비우기</button>
             </div>
         </div>
@@ -378,6 +388,7 @@
 
     // ───────── 필터 ─────────
     function basePass(x) {
+        if (CART_ONLY) return !!x._c;            // 선정만 지도표시 — 다른 필터 무시
         if (!S.types[x.t]) return false;
         if (x.t === 2 && !S.q[x.q || 0]) return false;       // 배분사례 품질(O/△)
         if (S.sgg && x.s !== S.sgg) return false;
@@ -487,7 +498,7 @@
             [{label: '전체', v: 0}, {label: '2022~', v: 2022}, {label: '2023~', v: 2023},
              {label: '2024~', v: 2024}, {label: '2025~', v: 2025}, {label: '2026', v: 2026}],
             function (it) { return S.yearMin === it.v; },
-            function (it) { S.yearMin = it.v; },
+            function (it) { S.yearMin = (S.yearMin === it.v) ? 0 : it.v; },
             function (it) { return it.v === 0 ? 'c-all' : ''; });
     }
 
@@ -742,7 +753,7 @@
     function renderMarkers() {
         if (!KM) return;
         clearOvs(vmOvs);
-        if (KM.getLevel() > VM_LEVEL) return;
+        if (!CART_ONLY && KM.getLevel() > VM_LEVEL) return;   // 선정만 모드는 축소해도 마커
         var bd = KM.getBounds();
         var cand = [];
         for (var i = 0; i < ROWS.length; i++) {
@@ -804,7 +815,7 @@
 
     function updateLayerMode() {
         if (!KM) return;
-        var showPills = KM.getLevel() > VM_LEVEL;
+        var showPills = !CART_ONLY && KM.getLevel() > VM_LEVEL;
         pillOvs.forEach(function (o) { o.setMap(showPills ? KM : null); });
         renderMarkers();
     }
@@ -848,7 +859,7 @@
                 };
                 var pill = new kakao.maps.CustomOverlay({position: KLL(ll), content: pel,
                     yAnchor: 0.5, xAnchor: 0.5, zIndex: 10, clickable: true});
-                if (KM.getLevel() > VM_LEVEL) pill.setMap(KM);
+                if (!CART_ONLY && KM.getLevel() > VM_LEVEL) pill.setMap(KM);
                 pillOvs.push(pill);
             }
             var it = document.createElement('div');
@@ -1013,8 +1024,14 @@
                '일반상업', '일반공업', '준공업', '생산녹지', '자연녹지', '계획관리'];
     var MU = ['대지', '전답', '임야'];
     var TSHORT = ['평가', '거래', '배분'];
-    var CART = {items: [], conf: {}};
+    var CART = {items: [], conf: {}, notes: {}};
     var CM_CELL = null;
+    var CART_ONLY = false;
+
+    function markCartFlags() {
+        ROWS.forEach(function (x) { x._c = false; });
+        CART.items.forEach(function (i) { ROWS[i]._c = true; });
+    }
 
     var CKEY = {}, CIDX = {};
     (function () {
@@ -1040,7 +1057,8 @@
                 if (CART.conf[c].g != null) conf[c].g = CKEY[CART.conf[c].g];
             });
             localStorage.setItem('fmCart1', JSON.stringify({
-                items: CART.items.map(function (i) { return CKEY[i]; }), conf: conf}));
+                items: CART.items.map(function (i) { return CKEY[i]; }), conf: conf,
+                notes: CART.notes}));
         } catch (e) {}
     }
     function loadCart() {
@@ -1055,7 +1073,9 @@
                 if (d.conf[c].g != null && CIDX[d.conf[c].g] != null) e.g = CIDX[d.conf[c].g];
                 if (e.p != null || e.g != null) CART.conf[c] = e;
             });
+            CART.notes = d.notes || {};
         } catch (e) {}
+        markCartFlags();
     }
 
     function inCart(i) { return CART.items.indexOf(i) >= 0; }
@@ -1076,8 +1096,10 @@
             var e2 = CART.conf[c] = CART.conf[c] || {};
             if (e2[slotOf(x)] == null) e2[slotOf(x)] = i;
         }
+        markCartFlags();
         saveCart();
         renderMatrix();
+        if (CART_ONLY) refresh();
     }
     function confirmCart(i) {
         var x = ROWS[i], c = cellOf(x), sl = slotOf(x);
@@ -1112,10 +1134,13 @@
 
     function renderMatrix() {
         var tb = document.getElementById('cart-matrix');
-        var cnt = {};
+        var cnt = {}, cntP = {}, cntG = {};
         CART.items.forEach(function (i) {
             var c = cellOf(ROWS[i]);
-            if (c) cnt[c] = (cnt[c] || 0) + 1;
+            if (!c) return;
+            cnt[c] = (cnt[c] || 0) + 1;
+            if (slotOf(ROWS[i]) === 'p') cntP[c] = (cntP[c] || 0) + 1;
+            else cntG[c] = (cntG[c] || 0) + 1;
         });
         var h = '<tr><th></th>' + MU.map(function (u) { return '<th>' + u + '</th>'; }).join('') + '</tr>';
         MZ.forEach(function (z, ri) {
@@ -1124,9 +1149,15 @@
                 var c = z + '|' + u;
                 var e = CART.conf[c] || {};
                 var n = cnt[c] || 0;
-                h += '<td class="mx' + (n ? ' has' : '') + '" data-cell="' + c + '">' +
-                    '<span class="mp' + (e.p != null ? ' on' : '') + '">평</span>' +
-                    '<span class="mg' + (e.g != null ? ' on' : '') + '">거</span>' +
+                // 점등: 확정 = 진하게(on), 후보만 = 연하게(lit)
+                var pcls = e.p != null ? ' on' : (cntP[c] ? ' lit' : '');
+                var gcls = e.g != null ? ' on' : (cntG[c] ? ' lit' : '');
+                var note = (CART.notes[c] || '').trim();
+                h += '<td class="mx' + (n || note ? ' has' : '') + '" data-cell="' + c + '">' +
+                    '<span class="mp' + pcls + '">평</span>' +
+                    '<span class="mg' + gcls + '">거</span>' +
+                    '<span class="mo' + (note ? ' on' : '') + '"' +
+                        (note ? ' title="' + escv(note) + '"' : '') + '>의</span>' +
                     (n ? '<span class="mn">' + n + '</span>' : '') + '</td>';
             }
             h += '</tr>';
@@ -1151,6 +1182,13 @@
         });
         var order = {};
         MZ.forEach(function (z, ri) { for (var u = 0; u < 3; u++) order[z + '|' + u] = ri * 3 + u; });
+        // 후보는 없어도 의견이 있는 셀, 그리고 지정 셀 자체는 그룹으로 노출 (의견란 접근용)
+        if (CM_CELL && !groups[CM_CELL]) groups[CM_CELL] = [];
+        if (!CM_CELL) {
+            Object.keys(CART.notes).forEach(function (c) {
+                if ((CART.notes[c] || '').trim() && !groups[c]) groups[c] = [];
+            });
+        }
         var keys = Object.keys(groups).sort(function (a, b) { return (order[a] || 99) - (order[b] || 99); });
         var h = '';
         if (!keys.length) {
@@ -1173,6 +1211,9 @@
                 (rs.length ? ' · 개공비율 중위 ' + quantile(rs, 0.5).toFixed(3) : '') +
                 (ps.length ? ' · 단가 중위 ' + fmtWon(Math.round(quantile(ps, 0.5))) : '') +
                 '</small></h5>' +
+                '<textarea class="cm-note" data-note="' + c + '" rows="1" placeholder="의견 — 이 칸(용도지역×이용상황) 선정 근거·메모">' +
+                escv(CART.notes[c] || '') + '</textarea>' +
+                (arr.length === 0 ? '' :
                 '<table class="cm-tbl"><tr><th>확정</th><th>유형</th><th>소재지</th><th>연도</th>' +
                 '<th>토지단가</th><th>공시지가</th><th>개공비율</th><th></th></tr>' +
                 arr.map(function (i) {
@@ -1189,7 +1230,7 @@
                         '<td>' + fmtWon(x.g) + '</td>' +
                         '<td>' + (isFinite(x.r) && x.r ? Number(x.r).toFixed(3) : '–') + '</td>' +
                         '<td><span class="cm-del" data-del="' + i + '" title="장바구니에서 빼기">&#10005;</span></td></tr>';
-                }).join('') + '</table></div>';
+                }).join('') + '</table>') + '</div>';
         });
         document.getElementById('cm-title').textContent = CM_CELL
             ? MZL[MZ.indexOf(+CM_CELL.split('|')[0])] + ' × ' + MU[+CM_CELL.split('|')[1]] + ' 후보'
@@ -1202,18 +1243,40 @@
         Array.prototype.forEach.call(body.querySelectorAll('[data-del]'), function (b) {
             b.onclick = function () { toggleCart(+b.getAttribute('data-del')); openCartModal(CM_CELL); };
         });
+        Array.prototype.forEach.call(body.querySelectorAll('[data-note]'), function (ta) {
+            ta.oninput = function () {
+                var c = ta.getAttribute('data-note');
+                var v = ta.value.trim();
+                if (v) CART.notes[c] = ta.value; else delete CART.notes[c];
+                saveCart();
+                renderMatrix();          // 배지만 갱신 — 모달은 그대로 (포커스 유지)
+            };
+        });
         md.style.display = 'flex';
     }
     function closeCartModal() { document.getElementById('cart-modal').style.display = 'none'; }
 
+    function syncCartMapBtn() {
+        document.getElementById('btn-cart-map').classList.toggle('primary', CART_ONLY);
+    }
+    document.getElementById('btn-cart-map').onclick = function () {
+        CART_ONLY = !CART_ONLY;
+        syncCartMapBtn();
+        refresh();
+    };
     document.getElementById('btn-cart-view').onclick = function () { openCartModal(null); };
     document.getElementById('btn-cart-clear').onclick = function () {
-        if (!CART.items.length || !confirm('장바구니를 비울까요?')) return;
+        if ((!CART.items.length && !Object.keys(CART.notes).length) ||
+            !confirm('장바구니(의견 포함)를 비울까요?')) return;
         CART.items = [];
         CART.conf = {};
+        CART.notes = {};
+        markCartFlags();
         saveCart();
         renderMatrix();
         closeCartModal();
+        if (CART_ONLY) { CART_ONLY = false; syncCartMapBtn(); }
+        refresh();
     };
     document.querySelector('#cart-modal .cm-x').onclick = closeCartModal;
     document.getElementById('cart-modal').onclick = function (ev) {
