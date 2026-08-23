@@ -61,11 +61,13 @@
     #cart-matrix td.mx { border: 1px solid #edf2f7; padding: 3px 1px; text-align: center; cursor: pointer; white-space: nowrap; }
     #cart-matrix td.mx:hover { background: #f0f7ff; }
     #cart-matrix td.mx.has { background: #f8fbff; }
-    .mp, .mg, .mo { display: inline-block; width: 15px; border-radius: 4px; color: #cbd5e0; border: 1px solid #e2e8f0; font-weight: 700; margin: 0 1px; }
+    .mp, .mg, .ms, .mo { display: inline-block; width: 14px; border-radius: 4px; color: #cbd5e0; border: 1px solid #e2e8f0; font-weight: 700; margin: 0 0.5px; }
     .mp.lit { background: #ede9fe; border-color: #a78bfa; color: #7c3aed; }
     .mg.lit { background: #ccfbf1; border-color: #5eead4; color: #0d9488; }
+    .ms.lit { background: #e2e8f0; border-color: #94a3b8; color: #475569; }
     .mp.on { background: #7c3aed; border-color: #7c3aed; color: #fff; }
     .mg.on { background: #0d9488; border-color: #0d9488; color: #fff; }
+    .ms.on { background: #475569; border-color: #475569; color: #fff; }
     .mo.on { background: #f59e0b; border-color: #f59e0b; color: #fff; }
     textarea.cm-note {
         width: 100%; margin: 4px 0 2px; padding: 5px 8px; border: 1.5px solid #e2e8f0;
@@ -297,7 +299,7 @@
         </div>
 
         <div class="filter-section">
-            <label>후보 장바구니 <small>— 용도지역 × 이용상황 · 칸마다 평/거 확정 1건씩</small></label>
+            <label>후보 장바구니 <small>— 용도지역 × 이용상황 · 칸마다 평·거·표 각 1건 확정</small></label>
             <table id="cart-matrix"></table>
             <div class="dl-row" style="margin-top:7px;">
                 <button class="btn primary" id="btn-cart-view">장바구니 보기 (<span id="cart-n">0</span>)</button>
@@ -817,7 +819,7 @@
         if (x.t === 3) {
             return '<h4>표준지</h4>' + escv((x.s !== '미상' ? x.s + ' ' : '') + x.a) + '<br>' +
                 '공시년도 ' + (x.y || '–') + ' · 공시지가 <b>' + fmtWon(x.g) + '</b> 원/㎡' +
-                stdHtml(x);
+                stdHtml(x) + cartBtnHtml(x);
         }
         return '<h4>' + TYPES[x.t] +
             (x.t === 2 ? ' · <span style="color:#c2410c;">' + ((x.q || 0) === 0 ? 'O 사용가능' : '△ 검토필요') + '</span>' : '') + '</h4>' +
@@ -1176,7 +1178,7 @@
     var MZL = ['1종전용', '2종전용', '1종일주', '2종일주', '3종일주', '준주거',
                '일반상업', '일반공업', '준공업', '생산녹지', '자연녹지', '계획관리'];
     var MU = ['대지', '전답', '임야'];
-    var TSHORT = ['평가', '거래', '배분'];
+    var TSHORT = ['평가', '거래', '배분', '표준'];
     var CART = {items: [], conf: {}, notes: {}};
     var CM_CELL = null;
     var CART_ONLY = false;
@@ -1197,16 +1199,17 @@
         });
     })();
 
-    function cellOf(x) { return (x.t < 3 && x.z < 12 && x.u < 3) ? x.z + '|' + x.u : null; }
-    function slotOf(x) { return x.t === 0 ? 'p' : 'g'; }
+    function cellOf(x) { return (x.z < 12 && x.u < 3) ? x.z + '|' + x.u : null; }
+    function slotOf(x) { return x.t === 0 ? 'p' : (x.t === 3 ? 's' : 'g'); }
 
     function saveCart() {
         try {
             var conf = {};
             Object.keys(CART.conf).forEach(function (c) {
                 conf[c] = {};
-                if (CART.conf[c].p != null) conf[c].p = CKEY[CART.conf[c].p];
-                if (CART.conf[c].g != null) conf[c].g = CKEY[CART.conf[c].g];
+                ['p', 'g', 's'].forEach(function (sl) {
+                    if (CART.conf[c][sl] != null) conf[c][sl] = CKEY[CART.conf[c][sl]];
+                });
             });
             localStorage.setItem('fmCart1', JSON.stringify({
                 items: CART.items.map(function (i) { return CKEY[i]; }), conf: conf,
@@ -1221,9 +1224,11 @@
                 .filter(function (i) { return i != null; });
             Object.keys(d.conf || {}).forEach(function (c) {
                 var e = {};
-                if (d.conf[c].p != null && CIDX[d.conf[c].p] != null) e.p = CIDX[d.conf[c].p];
-                if (d.conf[c].g != null && CIDX[d.conf[c].g] != null) e.g = CIDX[d.conf[c].g];
-                if (e.p != null || e.g != null) CART.conf[c] = e;
+                ['p', 'g', 's'].forEach(function (sl) {
+                    var k2 = d.conf[c][sl];
+                    if (k2 != null && CIDX[k2] != null) e[sl] = CIDX[k2];
+                });
+                if (e.p != null || e.g != null || e.s != null) CART.conf[c] = e;
             });
             CART.notes = d.notes || {};
         } catch (e) {}
@@ -1239,9 +1244,8 @@
             CART.items.splice(at, 1);
             var e = CART.conf[c];
             if (e) {
-                if (e.p === i) delete e.p;
-                if (e.g === i) delete e.g;
-                if (e.p == null && e.g == null) delete CART.conf[c];
+                ['p', 'g', 's'].forEach(function (sl) { if (e[sl] === i) delete e[sl]; });
+                if (e.p == null && e.g == null && e.s == null) delete CART.conf[c];
             }
         } else {
             CART.items.push(i);
@@ -1258,7 +1262,7 @@
         if (!c) return;
         var e = CART.conf[c] = CART.conf[c] || {};
         if (e[sl] === i) delete e[sl]; else e[sl] = i;
-        if (e.p == null && e.g == null) delete CART.conf[c];
+        if (e.p == null && e.g == null && e.s == null) delete CART.conf[c];
         saveCart();
         renderMatrix();
     }
@@ -1286,13 +1290,13 @@
 
     function renderMatrix() {
         var tb = document.getElementById('cart-matrix');
-        var cnt = {}, cntP = {}, cntG = {};
+        var cnt = {}, cntS = {p: {}, g: {}, s: {}};
         CART.items.forEach(function (i) {
             var c = cellOf(ROWS[i]);
             if (!c) return;
             cnt[c] = (cnt[c] || 0) + 1;
-            if (slotOf(ROWS[i]) === 'p') cntP[c] = (cntP[c] || 0) + 1;
-            else cntG[c] = (cntG[c] || 0) + 1;
+            var sl = slotOf(ROWS[i]);
+            cntS[sl][c] = (cntS[sl][c] || 0) + 1;
         });
         var h = '<tr><th></th>' + MU.map(function (u) { return '<th>' + u + '</th>'; }).join('') + '</tr>';
         MZ.forEach(function (z, ri) {
@@ -1302,12 +1306,14 @@
                 var e = CART.conf[c] || {};
                 var n = cnt[c] || 0;
                 // 점등: 확정 = 진하게(on), 후보만 = 연하게(lit)
-                var pcls = e.p != null ? ' on' : (cntP[c] ? ' lit' : '');
-                var gcls = e.g != null ? ' on' : (cntG[c] ? ' lit' : '');
+                var pcls = e.p != null ? ' on' : (cntS.p[c] ? ' lit' : '');
+                var gcls = e.g != null ? ' on' : (cntS.g[c] ? ' lit' : '');
+                var scls = e.s != null ? ' on' : (cntS.s[c] ? ' lit' : '');
                 var note = (CART.notes[c] || '').trim();
                 h += '<td class="mx' + (n || note ? ' has' : '') + '" data-cell="' + c + '">' +
                     '<span class="mp' + pcls + '">평</span>' +
                     '<span class="mg' + gcls + '">거</span>' +
+                    '<span class="ms' + scls + '">표</span>' +
                     '<span class="mo' + (note ? ' on' : '') + '"' +
                         (note ? ' title="' + escv(note) + '"' : '') + '>의</span>' +
                     (n ? '<span class="mn">' + n + '</span>' : '') + '</td>';
@@ -1358,10 +1364,15 @@
             var ps = arr.map(function (i) { return ROWS[i].p; })
                 .filter(function (v) { return isFinite(v) && v > 0; })
                 .sort(function (a, b) { return a - b; });
+            var gs = arr.filter(function (i) { return ROWS[i].t === 3; })
+                .map(function (i) { return ROWS[i].g; })
+                .filter(function (v) { return isFinite(v) && v > 0; })
+                .sort(function (a, b) { return a - b; });
             h += '<div class="cm-grp"><h5>' + MZL[MZ.indexOf(zi)] + ' × ' + MU[ui] +
                 '<small>후보 ' + arr.length +
                 (rs.length ? ' · 개공비율 중위 ' + quantile(rs, 0.5).toFixed(3) : '') +
                 (ps.length ? ' · 단가 중위 ' + fmtWon(Math.round(quantile(ps, 0.5))) : '') +
+                (gs.length ? ' · 표준지 공시 중위 ' + fmtWon(Math.round(quantile(gs, 0.5))) : '') +
                 '</small></h5>' +
                 '<textarea class="cm-note" data-note="' + c + '" rows="1" placeholder="의견 — 이 칸(용도지역×이용상황) 선정 근거·메모">' +
                 escv(CART.notes[c] || '') + '</textarea>' +
@@ -1370,13 +1381,15 @@
                 '<th>토지단가</th><th>공시지가</th><th>개공비율</th><th></th></tr>' +
                 arr.map(function (i) {
                     var x = ROWS[i];
-                    var cf = (e.p === i || e.g === i);
+                    var cf = (e.p === i || e.g === i || e.s === i);
                     return '<tr' + (cf ? ' class="cf"' : '') + '>' +
                         '<td><span class="cm-star' + (cf ? ' on' : '') + '" data-cf="' + i +
-                            '" title="' + (x.t === 0 ? '평가사례 란' : '거래사례 란') + ' 확정 토글">★</span></td>' +
+                            '" title="' + (x.t === 0 ? '평가사례' : (x.t === 3 ? '표준지' : '거래사례')) +
+                            ' 란 확정 토글">★</span></td>' +
                         '<td class="cm-typ" style="color:' + TCOLOR[x.t] + '">' + TSHORT[x.t] +
                             (x.t === 2 ? ((x.q || 0) === 0 ? ' O' : ' △') : '') + '</td>' +
-                        '<td>' + escv(shortAddr(x.a || (x.s + ' ' + x.e + ' ' + x.l))) + '</td>' +
+                        '<td>' + escv(x.t === 3 ? (x.s !== '미상' ? x.s + ' ' + x.a : x.a)
+                                                 : shortAddr(x.a || (x.s + ' ' + x.e + ' ' + x.l))) + '</td>' +
                         '<td>' + (x.y || '–') + '</td>' +
                         '<td>' + fmtWon(x.p) + '</td>' +
                         '<td>' + fmtWon(x.g) + '</td>' +
