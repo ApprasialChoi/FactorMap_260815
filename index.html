@@ -42,6 +42,18 @@
     .chip.c-all.active { background: #4a5568; }
     .chip.c-metric.active { background: #0051af; }
 
+    /* ===== 토지단가 범위 ===== */
+    .rng-row { display: flex; align-items: center; gap: 5px; }
+    .rng-row input {
+        flex: 1; min-width: 0; padding: 5px 7px; border: 1.5px solid #e2e8f0; border-radius: 7px;
+        font-family: inherit; font-size: 11.5px; color: #2d3748; text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+    .rng-row input:focus { outline: none; border-color: #0051af; }
+    .rng-row input.on { border-color: #0051af; background: #f0f7ff; font-weight: 700; }
+    .rng-row span { color: #a0aec0; font-size: 11px; }
+    .rng-row .btn { flex: 0 0 auto; padding: 5px 8px; }
+
     /* ===== 후보 장바구니 (매트릭스·모달·팝업 버튼) ===== */
     #cart-matrix { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
     #cart-matrix th { color: #718096; font-weight: 700; padding: 2px 1px; text-align: center; }
@@ -154,13 +166,25 @@
     .empty-state { padding: 30px 20px; text-align: center; color: #a0aec0; font-size: 12px; }
 
     /* 밸류맵식 개별 마커 — 1줄: 용도지역|지대, 2줄: 토지단가 */
-    .vm-wrap { background: none; border: none; }
+    .vm-wrap { background: none; border: none; display: inline-block; position: relative; }
+    /* 라벨을 옮겼을 때 실제 필지 위치를 잇는 지시선·앵커점 */
+    .vm-lead {
+        position: absolute; height: 0; z-index: 0; pointer-events: none;
+        border-top: 1.5px dashed rgba(26,54,93,.6); transform-origin: 0 0; display: none;
+    }
+    .vm-anch {
+        position: absolute; z-index: 1; pointer-events: none; display: none;
+        width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%;
+        background: #fff; border: 2px solid rgba(26,54,93,.75);
+    }
     .vm {
-        display: inline-block; white-space: nowrap; cursor: pointer;
+        display: inline-block; white-space: nowrap; cursor: grab;
+        position: relative; z-index: 2; touch-action: none; user-select: none;
         background: #fff; border-radius: 7px; overflow: hidden;
         box-shadow: 0 2px 7px rgba(15,23,42,.28); border: 1.5px solid rgba(26,54,93,.35);
-        font-family: inherit; position: relative;
+        font-family: inherit;
     }
+    .vm.dragging { cursor: grabbing; box-shadow: 0 6px 16px rgba(15,23,42,.4); opacity: .92; }
     .vm-loc {
         padding: 1.5px 6px; text-align: center; font-size: 10px; font-weight: 700;
         color: #334155; background: #f1f5f9; border-bottom: 1px solid #e2e8f0;
@@ -256,6 +280,17 @@
             <label>기간</label>
             <div class="filter-row" id="f-year"></div>
         </div>
+
+        <div class="filter-section">
+            <label>토지단가 범위 <small>— 원/㎡ · 비우면 제한 없음</small></label>
+            <div class="rng-row">
+                <input type="number" id="f-pmin" placeholder="최소" min="0" step="10000">
+                <span>~</span>
+                <input type="number" id="f-pmax" placeholder="최대" min="0" step="10000">
+                <button class="btn" id="btn-prng">초기화</button>
+            </div>
+            <div class="stat-sub" id="prng-note" style="margin-top:5px;"></div>
+        </div>
         <div class="filter-section">
             <label>배분사례 품질 <small>— 거래사례(배분)에만 적용</small></label>
             <div class="filter-row" id="f-q"></div>
@@ -323,6 +358,7 @@
 <div id="map-tools">
     <button id="btn-cadastral" title="카카오맵 지적편집도 — 용도지역 색상 표시">🗺️ 지적편집도(용도지역)</button>
     <button id="btn-hybrid" title="위성 + 라벨">🛰️ 위성</button>
+    <button id="btn-lbl-reset" title="드래그로 옮긴 라벨을 모두 제자리로" style="display:none;">↺ 라벨 위치 초기화</button>
 </div>
 
 <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=231190ac1aca72ada0b739110d8a0eb4"></script>
@@ -334,11 +370,12 @@
 (function () {
     'use strict';
     var META = window.FM_META, ROWS = window.FM_ROWS, CENTERS = window.FM_CENTERS;
+    ROWS.forEach(function (x, i) { x._i = i; });
 
     // ───────── 상태 ─────────
     var TYPES = META.types || ['평가사례', '거래사례'];
     var S = { types: {}, sgg: null, emd: null, ris: {}, zones: {}, uses: {},
-              yearMin: 0, q: {0: true, 1: false}, metric: 'r' };
+              yearMin: 0, pMin: 0, pMax: 0, q: {0: true, 1: false}, metric: 'r' };
     TYPES.forEach(function (_, i) { S.types[i] = true; });
 
     // ───────── 지표 ─────────
@@ -400,6 +437,11 @@
         if (x.t !== 3) {                                     // 표준지는 기간·지표 무관 (공시 기준)
             if (S.yearMin && x.y < S.yearMin) return false;
             if (!isFinite(val(x)) || val(x) <= 0) return false;   // 토지단가 미기재분 제외
+            if (S.pMin || S.pMax) {                              // 토지단가 범위
+                if (!isFinite(x.p) || x.p <= 0) return false;
+                if (S.pMin && x.p < S.pMin) return false;
+                if (S.pMax && x.p > S.pMax) return false;
+            }
         }
         return true;
     }
@@ -676,6 +718,73 @@
     var PARCELS = window.FM_PARCELS || {};
     var VM_LEVEL = 6, VM_CAP = 600;
     var TCOLOR = ['#7c3aed', '#0d9488', '#c2410c', '#475569'];
+
+    // ── 라벨 위치: 같은 필지(동일 앵커)는 자동으로 위로 쌓고, 드래그하면 그 자리를 기억 ──
+    var MOFF = {}, DRAG_AT = 0;
+    try { MOFF = JSON.parse(localStorage.getItem('fmLabelOff1') || '{}') || {}; } catch (e) { MOFF = {}; }
+    function saveOff() { try { localStorage.setItem('fmLabelOff1', JSON.stringify(MOFF)); } catch (e) {} }
+    function mkey(x) { return CKEY[x._i] || ('r' + x._i); }
+    function syncLabelResetBtn() {
+        var b = document.getElementById('btn-lbl-reset');
+        if (b) b.style.display = Object.keys(MOFF).length ? '' : 'none';
+    }
+
+    function applyOff(rec, off) {
+        rec.off = off || [0, 0];
+        var dx = rec.off[0], dy = rec.off[1];
+        rec.vm.style.transform = (dx || dy) ? 'translate(' + dx + 'px,' + dy + 'px)' : '';
+        if (!dx && !dy) { rec.lead.style.display = 'none'; rec.anch.style.display = 'none'; return; }
+        // 래퍼 좌표계 — 앵커점 = (w/2, h×1.12 : yAnchor), 옮긴 라벨 중심 = (w/2+dx, h/2+dy)
+        var w = rec.el.offsetWidth || 92, h = rec.el.offsetHeight || 46;
+        var ax = w / 2, ay = h * 1.12;
+        var vx = ax + dx, vy = h / 2 + dy;
+        var len = Math.sqrt((vx - ax) * (vx - ax) + (vy - ay) * (vy - ay));
+        rec.lead.style.display = 'block';
+        rec.lead.style.left = ax + 'px';
+        rec.lead.style.top = ay + 'px';
+        rec.lead.style.width = len + 'px';
+        rec.lead.style.transform = 'rotate(' + Math.atan2(vy - ay, vx - ax) + 'rad)';
+        rec.anch.style.display = 'block';
+        rec.anch.style.left = ax + 'px';
+        rec.anch.style.top = ay + 'px';
+    }
+
+    function wireDrag(rec) {
+        rec.vm.addEventListener('pointerdown', function (ev) {
+            if (ev.button != null && ev.button !== 0) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            var sx = ev.clientX, sy = ev.clientY;
+            var base = (rec.off || [0, 0]).slice();
+            var moved = false;
+            try { rec.vm.setPointerCapture(ev.pointerId); } catch (e) {}
+            if (KM.setDraggable) KM.setDraggable(false);
+            rec.ov.setZIndex(90);
+            rec.vm.classList.add('dragging');
+            function mv(e2) {
+                var dx = e2.clientX - sx, dy = e2.clientY - sy;
+                if (!moved && Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+                if (moved) applyOff(rec, [base[0] + dx, base[1] + dy]);
+            }
+            function up() {
+                rec.vm.removeEventListener('pointermove', mv);
+                rec.vm.removeEventListener('pointerup', up);
+                rec.vm.removeEventListener('pointercancel', up);
+                rec.vm.classList.remove('dragging');
+                if (KM.setDraggable) KM.setDraggable(true);
+                rec.ov.setZIndex(20);
+                if (moved) {
+                    MOFF[mkey(rec.x)] = rec.off;
+                    saveOff();
+                    syncLabelResetBtn();
+                    DRAG_AT = Date.now();       // 드래그 직후 클릭(팝업)은 무시
+                }
+            }
+            rec.vm.addEventListener('pointermove', mv);
+            rec.vm.addEventListener('pointerup', up);
+            rec.vm.addEventListener('pointercancel', up);
+        });
+    }
     var ZSHORT = {'제1종전용주거지역': '1종전주', '제2종전용주거지역': '2종전주',
                   '제1종일반주거지역': '1종일주', '제2종일반주거지역': '2종일주',
                   '제3종일반주거지역': '3종일주', '자연환경보전지역': '자연환경',
@@ -768,6 +877,7 @@
         var PRIO = {2: 0, 1: 1, 0: 2, 3: 3};   // 배분·거래 우선, 표준지는 맨 뒤
         if (total > VM_CAP) cand.sort(function (a, b) { return PRIO[a.t] - PRIO[b.t]; });
         var sel = cand.slice(0, VM_CAP);
+        var recs = [];
         sel.forEach(function (x) {
             var an = anchorOf(x);
             var pc = PARCELS[x.a];
@@ -795,12 +905,39 @@
                 '<span class="vm-j">' + escv(jdOf(x) || META.uses[x.u]) + '</span></div>' +
                 '<div class="vm-bot"><span class="vm-p">' + fmtWon(x.t === 3 ? x.g : x.p) + '</span>' +
                 (x.r ? '<span class="vm-r">' + Number(x.r).toFixed(2) + '</span>' : '') +
-                '</div></div>';
-            el.firstChild.onclick = function () { showInfo(KLL(an), vmPopup(x), x); };
+                '</div></div>' +
+                '<div class="vm-lead"></div><div class="vm-anch"></div>';
+            el.className = 'vm-wrap';
+            var vm = el.querySelector('.vm');
+            vm.onclick = function () {
+                if (Date.now() - DRAG_AT < 250) return;    // 드래그 끝의 클릭은 무시
+                showInfo(KLL(an), vmPopup(x), x);
+            };
             var ov = new kakao.maps.CustomOverlay({position: KLL(an), content: el,
                 yAnchor: 1.12, xAnchor: 0.5, zIndex: 20, clickable: true});
             ov.setMap(KM);
             vmOvs.push(ov);
+            var rec = {x: x, el: el, vm: vm, ov: ov, off: [0, 0],
+                       lead: el.querySelector('.vm-lead'), anch: el.querySelector('.vm-anch'),
+                       gk: an[0].toFixed(5) + ',' + an[1].toFixed(5)};
+            recs.push(rec);
+            wireDrag(rec);
+        });
+
+        // 같은 필지(동일 앵커)에 여러 사례 → 위로 쌓아 가리지 않게, 지시선으로 필지와 연결
+        var byAnchor = {};
+        recs.forEach(function (r) { (byAnchor[r.gk] = byAnchor[r.gk] || []).push(r); });
+        Object.keys(byAnchor).forEach(function (gk) {
+            var g = byAnchor[gk];
+            g.sort(function (a, b) {          // 배분·거래·평가·표준지 순으로 아래부터
+                return PRIO[a.x.t] - PRIO[b.x.t] || (b.x.y || 0) - (a.x.y || 0);
+            });
+            var acc = 0;
+            g.forEach(function (r) {
+                var auto = [0, -acc];
+                acc += (r.el.offsetHeight || 46) + 5;
+                applyOff(r, MOFF[mkey(r.x)] || auto);
+            });
         });
         if (total > sel.length) {
             var nel = document.createElement('div');
@@ -811,6 +948,17 @@
             nov.setMap(KM);
             vmOvs.push(nov);
         }
+    }
+
+    var lblBtn = document.getElementById('btn-lbl-reset');
+    if (lblBtn) {
+        lblBtn.onclick = function () {
+            MOFF = {};
+            saveOff();
+            syncLabelResetBtn();
+            renderMarkers();
+        };
+        syncLabelResetBtn();
     }
 
     function updateLayerMode() {
@@ -886,6 +1034,11 @@
         return [['사례유형', t], ['시군구', S.sgg || '전체'], ['읍면', S.emd || '전체'],
                 ['리', ri || '전체'], ['용도지역', z], ['이용상황', u],
                 ['기간', S.yearMin ? S.yearMin + '년 이후' : '전체'],
+                ['토지단가 범위', (S.pMin || S.pMax)
+                    ? (S.pMin ? S.pMin.toLocaleString('ko-KR') + '원 이상' : '') +
+                      (S.pMin && S.pMax ? ' ~ ' : '') +
+                      (S.pMax ? S.pMax.toLocaleString('ko-KR') + '원 이하' : '')
+                    : '전체'],
                 ['배분품질', (S.q[0] ? 'O 사용가능 ' : '') + (S.q[1] ? '△ 검토필요' : '') || '없음'],
                 ['지표', M().label + (M().unit ? ' (' + M().unit + ')' : '')]];
     }
@@ -1037,7 +1190,6 @@
     (function () {
         var seen = {};
         ROWS.forEach(function (x, i) {
-            if (x.t === 3) return;
             var b = [x.t, x.a, x.y, x.p, x.g, x.r].join('|');
             seen[b] = (seen[b] || 0) + 1;
             CKEY[i] = b + '#' + seen[b];
@@ -1255,6 +1407,40 @@
         md.style.display = 'flex';
     }
     function closeCartModal() { document.getElementById('cart-modal').style.display = 'none'; }
+
+    // ── 토지단가 범위 ──
+    var pmin = document.getElementById('f-pmin'), pmax = document.getElementById('f-pmax');
+    var rngTimer = null;
+    function applyRange() {
+        S.pMin = Math.max(0, parseFloat(pmin.value) || 0);
+        S.pMax = Math.max(0, parseFloat(pmax.value) || 0);
+        pmin.classList.toggle('on', !!S.pMin);
+        pmax.classList.toggle('on', !!S.pMax);
+        var note = '';
+        if (S.pMin && S.pMax && S.pMax < S.pMin) {
+            note = '<span style="color:#c05621">최대가 최소보다 작습니다 — 결과 0건</span>';
+        } else if (S.pMin || S.pMax) {
+            note = (S.pMin ? fmtWon(S.pMin) + '원 이상' : '') +
+                   (S.pMin && S.pMax ? ' · ' : '') +
+                   (S.pMax ? fmtWon(S.pMax) + '원 이하' : '') +
+                   ' <span style="color:#a0aec0">(표준지 제외 · 토지단가 기준)</span>';
+        }
+        document.getElementById('prng-note').innerHTML = note;
+        refresh();
+    }
+    function onRangeInput() {
+        clearTimeout(rngTimer);
+        rngTimer = setTimeout(applyRange, 300);       // 타자 중 렌더 폭주 방지
+    }
+    pmin.addEventListener('input', onRangeInput);
+    pmax.addEventListener('input', onRangeInput);
+    pmin.addEventListener('change', applyRange);
+    pmax.addEventListener('change', applyRange);
+    document.getElementById('btn-prng').onclick = function () {
+        pmin.value = '';
+        pmax.value = '';
+        applyRange();
+    };
 
     function syncCartMapBtn() {
         document.getElementById('btn-cart-map').classList.toggle('primary', CART_ONLY);
