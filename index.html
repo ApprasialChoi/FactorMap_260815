@@ -42,6 +42,51 @@
     .chip.c-all.active { background: #4a5568; }
     .chip.c-metric.active { background: #0051af; }
 
+    /* ===== 후보 장바구니 (매트릭스·모달·팝업 버튼) ===== */
+    #cart-matrix { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
+    #cart-matrix th { color: #718096; font-weight: 700; padding: 2px 1px; text-align: center; }
+    #cart-matrix tr th:first-child { text-align: left; width: 54px; white-space: nowrap; font-size: 9.5px; }
+    #cart-matrix td.mx { border: 1px solid #edf2f7; padding: 3px 1px; text-align: center; cursor: pointer; white-space: nowrap; }
+    #cart-matrix td.mx:hover { background: #f0f7ff; }
+    #cart-matrix td.mx.has { background: #f8fbff; }
+    .mp, .mg { display: inline-block; width: 15px; border-radius: 4px; color: #cbd5e0; border: 1px solid #e2e8f0; font-weight: 700; margin: 0 1px; }
+    .mp.on { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+    .mg.on { background: #0d9488; border-color: #0d9488; color: #fff; }
+    .mn { color: #0051af; font-weight: 800; margin-left: 2px; }
+
+    .fm-cart-btn {
+        width: 100%; padding: 5px 10px; border-radius: 7px; border: 1.5px solid #0051af;
+        background: #fff; color: #0051af; font-weight: 700; font-size: 11.5px;
+        cursor: pointer; font-family: inherit;
+    }
+    .fm-cart-btn.on { background: #0051af; color: #fff; }
+
+    #cart-modal {
+        position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 5000;
+        display: none; align-items: center; justify-content: center;
+    }
+    .cm-box {
+        background: #fff; border-radius: 12px; width: min(800px, 94vw); max-height: 84vh;
+        display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(15,23,42,.35);
+    }
+    .cm-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #edf2f7; font-size: 14px; color: #1a365d; }
+    .cm-x { cursor: pointer; color: #a0aec0; font-weight: 700; padding: 0 4px; }
+    .cm-x:hover { color: #2d3748; }
+    .cm-body { overflow: auto; padding: 2px 16px 14px; }
+    .cm-grp { margin-top: 12px; }
+    .cm-grp h5 { font-size: 12.5px; color: #1a365d; margin-bottom: 4px; }
+    .cm-grp h5 small { color: #718096; font-weight: 600; margin-left: 6px; }
+    table.cm-tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .cm-tbl th { background: #edf2f7; padding: 3px 6px; color: #4a5568; text-align: right; white-space: nowrap; }
+    .cm-tbl th:nth-child(1), .cm-tbl th:nth-child(2), .cm-tbl th:nth-child(3) { text-align: left; }
+    .cm-tbl td { padding: 3px 6px; border-bottom: 1px solid #f1f5f9; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .cm-tbl td:nth-child(1), .cm-tbl td:nth-child(2), .cm-tbl td:nth-child(3) { text-align: left; }
+    .cm-tbl tr.cf td { background: #f0f7ff; font-weight: 700; }
+    .cm-star { cursor: pointer; color: #cbd5e0; font-size: 13px; }
+    .cm-star.on { color: #f59e0b; }
+    .cm-del { cursor: pointer; color: #a0aec0; font-weight: 700; padding: 0 3px; }
+    .cm-del:hover { color: #e53e3e; }
+
     /* ===== 내려받기 · 지도 컨트롤 ===== */
     .dl-row { display: flex; gap: 6px; }
     .btn {
@@ -207,6 +252,15 @@
             <div class="filter-row" id="f-q"></div>
         </div>
 
+        <div class="filter-section">
+            <label>후보 장바구니 <small>— 용도지역 × 이용상황 · 칸마다 평/거 확정 1건씩</small></label>
+            <table id="cart-matrix"></table>
+            <div class="dl-row" style="margin-top:7px;">
+                <button class="btn primary" id="btn-cart-view">장바구니 보기 (<span id="cart-n">0</span>)</button>
+                <button class="btn" id="btn-cart-clear">비우기</button>
+            </div>
+        </div>
+
         <div class="stat-section">
             <div class="stat-title">지표 선택</div>
             <div class="filter-row" id="f-metric" style="margin-bottom:10px;"></div>
@@ -245,6 +299,13 @@
             <label id="ri-head">리별 정제 중위값 <small>— 클릭하면 해당 리만 선택</small></label>
         </div>
         <div id="ri-list"></div>
+    </div>
+</div>
+
+<div id="cart-modal">
+    <div class="cm-box">
+        <div class="cm-head"><b id="cm-title">후보 장바구니</b><span class="cm-x">&#10005;</span></div>
+        <div class="cm-body"></div>
     </div>
 </div>
 
@@ -342,13 +403,23 @@
 
     // ───────── 칩 렌더 ─────────
     function chipRow(el, items, isActive, onClick, cls) {
-        el.innerHTML = '';
-        items.forEach(function (it) {
-            var c = document.createElement('div');
+        // 칩 구성이 같으면 노드를 재사용 — 매번 재생성하면 mousedown~mouseup 사이에
+        // 노드가 교체되어 빠른 연속 클릭이 유실된다 (토글이 안 먹은 듯 보이는 원인)
+        var same = el.childNodes.length === items.length;
+        if (same) {
+            for (var i = 0; i < items.length; i++) {
+                if (el.childNodes[i].textContent !== items[i].label) { same = false; break; }
+            }
+        }
+        if (!same) {
+            el.innerHTML = '';
+            items.forEach(function () { el.appendChild(document.createElement('div')); });
+        }
+        items.forEach(function (it, i2) {
+            var c = el.childNodes[i2];
             c.className = 'chip ' + (cls ? cls(it) : '') + (isActive(it) ? ' active' : '');
-            c.textContent = it.label;
+            if (c.textContent !== it.label) c.textContent = it.label;
             c.onclick = function () { onClick(it); refresh(); };
-            el.appendChild(c);
         });
     }
 
@@ -529,12 +600,15 @@
     function clearOvs(arr) { arr.forEach(function (o) { o.setMap(null); }); arr.length = 0; }
     var pillOvs = [], boundPolys = [], vmOvs = [], infoOv = null;
 
-    function showInfo(pos, html) {
+    var INFO_X = null;
+    function showInfo(pos, html, x) {
+        INFO_X = x || null;
         if (infoOv) { infoOv.setMap(null); infoOv = null; }
         var el = document.createElement('div');
         el.className = 'fm-pop';
         el.innerHTML = html + '<span class="fm-pop-x">✕</span>';
         el.querySelector('.fm-pop-x').onclick = function () { infoOv.setMap(null); infoOv = null; };
+        wireCartBtn(el);
         infoOv = new kakao.maps.CustomOverlay({position: pos, content: el, yAnchor: 1.18, zIndex: 60, clickable: true});
         infoOv.setMap(KM);
     }
@@ -633,7 +707,7 @@
             '토지단가 <b>' + fmtWon(x.p) + '</b> 원/㎡' +
             (x.g ? ' · 공시지가 ' + fmtWon(x.g) : '') +
             (x.r ? ' · 개공비율 <b>' + Number(x.r).toFixed(3) + '</b>' : '') +
-            allocHtml(x);
+            allocHtml(x) + cartBtnHtml(x);
     }
 
     // 배분사례(t=2) — 건물을 어떤 값으로 빼고 토지단가를 냈는지
@@ -695,7 +769,7 @@
                         fillColor: TCOLOR[x.t], fillOpacity: 0.14, zIndex: 5
                     });
                     kakao.maps.event.addListener(pg, 'click', function () {
-                        showInfo(KLL(an), vmPopup(x));
+                        showInfo(KLL(an), vmPopup(x), x);
                     });
                     pg.setMap(KM);
                     vmOvs.push(pg);
@@ -711,7 +785,7 @@
                 '<div class="vm-bot"><span class="vm-p">' + fmtWon(x.t === 3 ? x.g : x.p) + '</span>' +
                 (x.r ? '<span class="vm-r">' + Number(x.r).toFixed(2) + '</span>' : '') +
                 '</div></div>';
-            el.firstChild.onclick = function () { showInfo(KLL(an), vmPopup(x)); };
+            el.firstChild.onclick = function () { showInfo(KLL(an), vmPopup(x), x); };
             var ov = new kakao.maps.CustomOverlay({position: KLL(an), content: el,
                 yAnchor: 1.12, xAnchor: 0.5, zIndex: 20, clickable: true});
             ov.setMap(KM);
@@ -736,6 +810,7 @@
     }
     if (KM) {
         kakao.maps.event.addListener(KM, 'idle', updateLayerMode);
+        kakao.maps.event.addListener(KM, 'zoom_changed', updateLayerMode);
     }
 
     function renderMapAndList() {
@@ -903,6 +978,7 @@
         renderFilters();
         var sel = ROWS.filter(pass);
         LAST_SEL = sel;
+        if (infoOv && INFO_X && !pass(INFO_X)) { infoOv.setMap(null); infoOv = null; INFO_X = null; }
         document.getElementById('cnt-sel').textContent = sel.length.toLocaleString();
         document.getElementById('cnt-all').textContent = ROWS.length.toLocaleString();
         renderStats(sel.filter(function (x) { return x.t !== 3; }));
@@ -928,6 +1004,227 @@
             (noVal ? '<br><span style="color:#c05621">※ ' + M().label + ' 미기재 ' +
                      noVal.toLocaleString() + '건은 통계에서 제외됨</span>' : '');
     }
+
+    // ───────── 후보 장바구니 — 용도지역 12 × 이용상황 3 매트릭스 ─────────
+    //   · 담기: 사례 팝업 버튼 (평가·거래·배분)
+    //   · 확정: 칸마다 평가 1건 + 거래(배분 포함) 1건 — 빈 란에 담으면 자동 확정, 모달 ★로 교체
+    var MZ = [1, 7, 4, 8, 3, 6, 0, 5, 2, 9, 11, 10];
+    var MZL = ['1종전용', '2종전용', '1종일주', '2종일주', '3종일주', '준주거',
+               '일반상업', '일반공업', '준공업', '생산녹지', '자연녹지', '계획관리'];
+    var MU = ['대지', '전답', '임야'];
+    var TSHORT = ['평가', '거래', '배분'];
+    var CART = {items: [], conf: {}};
+    var CM_CELL = null;
+
+    var CKEY = {}, CIDX = {};
+    (function () {
+        var seen = {};
+        ROWS.forEach(function (x, i) {
+            if (x.t === 3) return;
+            var b = [x.t, x.a, x.y, x.p, x.g, x.r].join('|');
+            seen[b] = (seen[b] || 0) + 1;
+            CKEY[i] = b + '#' + seen[b];
+            CIDX[CKEY[i]] = i;
+        });
+    })();
+
+    function cellOf(x) { return (x.t < 3 && x.z < 12 && x.u < 3) ? x.z + '|' + x.u : null; }
+    function slotOf(x) { return x.t === 0 ? 'p' : 'g'; }
+
+    function saveCart() {
+        try {
+            var conf = {};
+            Object.keys(CART.conf).forEach(function (c) {
+                conf[c] = {};
+                if (CART.conf[c].p != null) conf[c].p = CKEY[CART.conf[c].p];
+                if (CART.conf[c].g != null) conf[c].g = CKEY[CART.conf[c].g];
+            });
+            localStorage.setItem('fmCart1', JSON.stringify({
+                items: CART.items.map(function (i) { return CKEY[i]; }), conf: conf}));
+        } catch (e) {}
+    }
+    function loadCart() {
+        try {
+            var d = JSON.parse(localStorage.getItem('fmCart1') || 'null');
+            if (!d) return;
+            CART.items = (d.items || []).map(function (k) { return CIDX[k]; })
+                .filter(function (i) { return i != null; });
+            Object.keys(d.conf || {}).forEach(function (c) {
+                var e = {};
+                if (d.conf[c].p != null && CIDX[d.conf[c].p] != null) e.p = CIDX[d.conf[c].p];
+                if (d.conf[c].g != null && CIDX[d.conf[c].g] != null) e.g = CIDX[d.conf[c].g];
+                if (e.p != null || e.g != null) CART.conf[c] = e;
+            });
+        } catch (e) {}
+    }
+
+    function inCart(i) { return CART.items.indexOf(i) >= 0; }
+    function toggleCart(i) {
+        var x = ROWS[i], c = cellOf(x);
+        if (!c) return;
+        var at = CART.items.indexOf(i);
+        if (at >= 0) {
+            CART.items.splice(at, 1);
+            var e = CART.conf[c];
+            if (e) {
+                if (e.p === i) delete e.p;
+                if (e.g === i) delete e.g;
+                if (e.p == null && e.g == null) delete CART.conf[c];
+            }
+        } else {
+            CART.items.push(i);
+            var e2 = CART.conf[c] = CART.conf[c] || {};
+            if (e2[slotOf(x)] == null) e2[slotOf(x)] = i;
+        }
+        saveCart();
+        renderMatrix();
+    }
+    function confirmCart(i) {
+        var x = ROWS[i], c = cellOf(x), sl = slotOf(x);
+        if (!c) return;
+        var e = CART.conf[c] = CART.conf[c] || {};
+        if (e[sl] === i) delete e[sl]; else e[sl] = i;
+        if (e.p == null && e.g == null) delete CART.conf[c];
+        saveCart();
+        renderMatrix();
+    }
+
+    function cartBtnHtml(x) {
+        var c = cellOf(x);
+        if (!c) return '';
+        var i = ROWS.indexOf(x);
+        var on = inCart(i);
+        return '<div style="margin-top:7px;"><button class="fm-cart-btn' + (on ? ' on' : '') +
+            '" data-cart="' + i + '">' + (on ? '담김 ✓ · 누르면 빼기' : '🛒 후보 담기') + '</button></div>';
+    }
+    function wireCartBtn(el) {
+        var cb = el.querySelector('[data-cart]');
+        if (!cb) return;
+        cb.onclick = function () {
+            var i = +cb.getAttribute('data-cart');
+            toggleCart(i);
+            var wrap = document.createElement('div');
+            wrap.innerHTML = cartBtnHtml(ROWS[i]);
+            cb.parentNode.replaceWith(wrap.firstChild);
+            wireCartBtn(el);
+        };
+    }
+
+    function renderMatrix() {
+        var tb = document.getElementById('cart-matrix');
+        var cnt = {};
+        CART.items.forEach(function (i) {
+            var c = cellOf(ROWS[i]);
+            if (c) cnt[c] = (cnt[c] || 0) + 1;
+        });
+        var h = '<tr><th></th>' + MU.map(function (u) { return '<th>' + u + '</th>'; }).join('') + '</tr>';
+        MZ.forEach(function (z, ri) {
+            h += '<tr><th>' + MZL[ri] + '</th>';
+            for (var u = 0; u < 3; u++) {
+                var c = z + '|' + u;
+                var e = CART.conf[c] || {};
+                var n = cnt[c] || 0;
+                h += '<td class="mx' + (n ? ' has' : '') + '" data-cell="' + c + '">' +
+                    '<span class="mp' + (e.p != null ? ' on' : '') + '">평</span>' +
+                    '<span class="mg' + (e.g != null ? ' on' : '') + '">거</span>' +
+                    (n ? '<span class="mn">' + n + '</span>' : '') + '</td>';
+            }
+            h += '</tr>';
+        });
+        tb.innerHTML = h;
+        Array.prototype.forEach.call(tb.querySelectorAll('td[data-cell]'), function (td) {
+            td.onclick = function () { openCartModal(td.getAttribute('data-cell')); };
+        });
+        document.getElementById('cart-n').textContent = CART.items.length;
+    }
+
+    function shortAddr(a) { return String(a || '').replace(/^전남광주통합특별시\s+/, ''); }
+
+    function openCartModal(cell) {
+        CM_CELL = cell || null;
+        var md = document.getElementById('cart-modal');
+        var groups = {};
+        CART.items.forEach(function (i) {
+            var c = cellOf(ROWS[i]);
+            if (!c || (CM_CELL && c !== CM_CELL)) return;
+            (groups[c] = groups[c] || []).push(i);
+        });
+        var order = {};
+        MZ.forEach(function (z, ri) { for (var u = 0; u < 3; u++) order[z + '|' + u] = ri * 3 + u; });
+        var keys = Object.keys(groups).sort(function (a, b) { return (order[a] || 99) - (order[b] || 99); });
+        var h = '';
+        if (!keys.length) {
+            h = '<div class="empty-state">담긴 후보가 없습니다.<br>지도의 사례 라벨을 눌러 "후보 담기"로 추가하세요.</div>';
+        }
+        keys.forEach(function (c) {
+            var zi = +c.split('|')[0], ui = +c.split('|')[1];
+            var e = CART.conf[c] || {};
+            var arr = groups[c].slice().sort(function (a, b) {
+                return ROWS[a].t - ROWS[b].t || (ROWS[b].y || 0) - (ROWS[a].y || 0);
+            });
+            var rs = arr.map(function (i) { return ROWS[i].r; })
+                .filter(function (v) { return isFinite(v) && v > 0; })
+                .sort(function (a, b) { return a - b; });
+            var ps = arr.map(function (i) { return ROWS[i].p; })
+                .filter(function (v) { return isFinite(v) && v > 0; })
+                .sort(function (a, b) { return a - b; });
+            h += '<div class="cm-grp"><h5>' + MZL[MZ.indexOf(zi)] + ' × ' + MU[ui] +
+                '<small>후보 ' + arr.length +
+                (rs.length ? ' · 개공비율 중위 ' + quantile(rs, 0.5).toFixed(3) : '') +
+                (ps.length ? ' · 단가 중위 ' + fmtWon(Math.round(quantile(ps, 0.5))) : '') +
+                '</small></h5>' +
+                '<table class="cm-tbl"><tr><th>확정</th><th>유형</th><th>소재지</th><th>연도</th>' +
+                '<th>토지단가</th><th>공시지가</th><th>개공비율</th><th></th></tr>' +
+                arr.map(function (i) {
+                    var x = ROWS[i];
+                    var cf = (e.p === i || e.g === i);
+                    return '<tr' + (cf ? ' class="cf"' : '') + '>' +
+                        '<td><span class="cm-star' + (cf ? ' on' : '') + '" data-cf="' + i +
+                            '" title="' + (x.t === 0 ? '평가사례 란' : '거래사례 란') + ' 확정 토글">★</span></td>' +
+                        '<td class="cm-typ" style="color:' + TCOLOR[x.t] + '">' + TSHORT[x.t] +
+                            (x.t === 2 ? ((x.q || 0) === 0 ? ' O' : ' △') : '') + '</td>' +
+                        '<td>' + escv(shortAddr(x.a || (x.s + ' ' + x.e + ' ' + x.l))) + '</td>' +
+                        '<td>' + (x.y || '–') + '</td>' +
+                        '<td>' + fmtWon(x.p) + '</td>' +
+                        '<td>' + fmtWon(x.g) + '</td>' +
+                        '<td>' + (isFinite(x.r) && x.r ? Number(x.r).toFixed(3) : '–') + '</td>' +
+                        '<td><span class="cm-del" data-del="' + i + '" title="장바구니에서 빼기">&#10005;</span></td></tr>';
+                }).join('') + '</table></div>';
+        });
+        document.getElementById('cm-title').textContent = CM_CELL
+            ? MZL[MZ.indexOf(+CM_CELL.split('|')[0])] + ' × ' + MU[+CM_CELL.split('|')[1]] + ' 후보'
+            : '후보 장바구니 전체';
+        var body = md.querySelector('.cm-body');
+        body.innerHTML = h;
+        Array.prototype.forEach.call(body.querySelectorAll('[data-cf]'), function (b) {
+            b.onclick = function () { confirmCart(+b.getAttribute('data-cf')); openCartModal(CM_CELL); };
+        });
+        Array.prototype.forEach.call(body.querySelectorAll('[data-del]'), function (b) {
+            b.onclick = function () { toggleCart(+b.getAttribute('data-del')); openCartModal(CM_CELL); };
+        });
+        md.style.display = 'flex';
+    }
+    function closeCartModal() { document.getElementById('cart-modal').style.display = 'none'; }
+
+    document.getElementById('btn-cart-view').onclick = function () { openCartModal(null); };
+    document.getElementById('btn-cart-clear').onclick = function () {
+        if (!CART.items.length || !confirm('장바구니를 비울까요?')) return;
+        CART.items = [];
+        CART.conf = {};
+        saveCart();
+        renderMatrix();
+        closeCartModal();
+    };
+    document.querySelector('#cart-modal .cm-x').onclick = closeCartModal;
+    document.getElementById('cart-modal').onclick = function (ev) {
+        if (ev.target === this) closeCartModal();
+    };
+    document.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape') closeCartModal();
+    });
+
+    loadCart();
+    renderMatrix();
 
     refresh();
 
