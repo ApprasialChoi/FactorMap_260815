@@ -243,6 +243,22 @@
     .fm-alloc td.k { color: #718096; white-space: nowrap; padding-right: 8px; }
     .fm-alloc td.v { text-align: right; font-variant-numeric: tabular-nums; }
     .fm-alloc .eq { color: #94a3b8; font-size: 10.5px; margin-top: 4px; }
+    .fm-alloc input.al-in {
+        width: 82px; padding: 1px 5px; border: 1.5px solid #f59e0b; border-radius: 5px;
+        text-align: right; font-family: inherit; font-size: 11.5px; color: #92400e;
+        background: #fffdf5; font-variant-numeric: tabular-nums; font-weight: 700;
+    }
+    .fm-alloc input.al-in.sm { width: 46px; }
+    .fm-alloc input.al-in:focus { outline: none; border-color: #d97706; background: #fff; }
+    .al-ed { background: #f59e0b; color: #fff; border-radius: 4px; padding: 0 4px; font-size: 9.5px; margin-left: 4px; }
+    .al-warn { color: #c53030; font-size: 10.5px; margin-top: 3px; font-weight: 700; }
+    button.al-rst {
+        width: 100%; margin-top: 5px; padding: 3px 6px; border-radius: 6px;
+        border: 1.5px solid #f59e0b; background: #fff; color: #b45309;
+        font-family: inherit; font-size: 10.5px; font-weight: 700; cursor: pointer;
+    }
+    button.al-rst:hover { background: #fffbeb; }
+    .vm.edited { box-shadow: 0 0 0 2px #f59e0b, 0 2px 7px rgba(15,23,42,.28); }
     .fm-pop .fm-pop-x { position: absolute; top: 6px; right: 9px; cursor: pointer; color: #a0aec0; font-weight: 700; }
     .fm-pop .fm-pop-x:hover { color: #2d3748; }
     .fm-pop::after {
@@ -655,15 +671,17 @@
     function clearOvs(arr) { arr.forEach(function (o) { o.setMap(null); }); arr.length = 0; }
     var pillOvs = [], boundPolys = [], vmOvs = [], infoOv = null;
 
-    var INFO_X = null;
+    var INFO_X = null, INFO_POS = null;
     function showInfo(pos, html, x) {
         INFO_X = x || null;
+        INFO_POS = pos;
         if (infoOv) { infoOv.setMap(null); infoOv = null; }
         var el = document.createElement('div');
         el.className = 'fm-pop';
         el.innerHTML = html + '<span class="fm-pop-x">✕</span>';
         el.querySelector('.fm-pop-x').onclick = function () { infoOv.setMap(null); infoOv = null; };
         wireCartBtn(el);
+        if (x && x.t === 2 && x.d) wireAlloc(el, x);
         infoOv = new kakao.maps.CustomOverlay({position: pos, content: el, yAnchor: 1.18, zIndex: 60, clickable: true});
         infoOv.setMap(KM);
     }
@@ -752,6 +770,72 @@
         rec.anch.style.top = ay + 'px';
     }
 
+    // ── 배분 재계산: 재조달 표준단가·내용연수를 바꾸면 잔가율→건물가격→토지단가→개공비율 ──
+    var ALLOC_OVR = {}, KEEP_INFO = false;
+    try { ALLOC_OVR = JSON.parse(localStorage.getItem('fmAlloc1') || '{}') || {}; } catch (e) { ALLOC_OVR = {}; }
+    function saveAlloc() { try { localStorage.setItem('fmAlloc1', JSON.stringify(ALLOC_OVR)); } catch (e) {} }
+
+    function setAlloc(x, uc, life) {
+        var d = x.d;
+        if (!x._orig) x._orig = {uc: d.uc, life: d.life, res: d.res, bp: d.bp, lp: d.lp, p: x.p, r: x.r};
+        d.uc = uc;
+        d.life = life;
+        var age = d.age || 0;
+        var res = (life > 0) ? Math.max(0, Math.min(1, (life - age) / life)) : 0;
+        d.res = Math.round(res * 10000) / 10000;
+        d.bp = uc * res * (d.ba || 0);
+        d.lp = (d.amt || 0) - d.bp;
+        x.p = (d.la > 0) ? Math.round(d.lp / d.la) : null;
+        x.r = (x.g && x.p > 0) ? Math.round(x.p / x.g * 1000) / 1000 : null;
+        x._ov = true;
+        ALLOC_OVR[mkey(x)] = [uc, life];
+        saveAlloc();
+    }
+    function resetAlloc(x) {
+        var o = x._orig;
+        if (o) {
+            x.d.uc = o.uc; x.d.life = o.life; x.d.res = o.res; x.d.bp = o.bp; x.d.lp = o.lp;
+            x.p = o.p; x.r = o.r;
+        }
+        x._ov = false;
+        delete ALLOC_OVR[mkey(x)];
+        saveAlloc();
+    }
+    function loadAlloc() {
+        ROWS.forEach(function (x) {
+            if (x.t !== 2 || !x.d) return;
+            var o = ALLOC_OVR[mkey(x)];
+            if (o) setAlloc(x, o[0], o[1]);
+        });
+    }
+    function wireAlloc(el, x) {
+        var ucIn = el.querySelector('[data-al="uc"]'), lfIn = el.querySelector('[data-al="life"]');
+        function commit() {
+            var uc = Math.max(0, parseFloat(ucIn.value) || 0);
+            var life = Math.max(1, parseFloat(lfIn.value) || 1);
+            if (uc === x.d.uc && life === x.d.life) return;
+            setAlloc(x, uc, life);
+            KEEP_INFO = true;                 // 수정 중 팝업이 닫히지 않게
+            refresh();
+            KEEP_INFO = false;
+            showInfo(INFO_POS, vmPopup(x), x);   // 재계산 결과로 팝업 갱신
+        }
+        [ucIn, lfIn].forEach(function (inp) {
+            if (!inp) return;
+            inp.onchange = commit;
+            inp.onkeydown = function (ev) { if (ev.key === 'Enter') inp.blur(); };
+            inp.onpointerdown = function (ev) { ev.stopPropagation(); };   // 지도 드래그 방지
+        });
+        var rb = el.querySelector('[data-al-reset]');
+        if (rb) rb.onclick = function () {
+            resetAlloc(x);
+            KEEP_INFO = true;
+            refresh();
+            KEEP_INFO = false;
+            showInfo(INFO_POS, vmPopup(x), x);
+        };
+    }
+
     function wireDrag(rec) {
         rec.vm.addEventListener('pointerdown', function (ev) {
             if (ev.button != null && ev.button !== 0) return;
@@ -838,22 +922,32 @@
         var d = x.d;
         if (x.t !== 2 || !d) return '';
         function row(k, v) { return '<tr><td class="k">' + k + '</td><td class="v">' + v + '</td></tr>'; }
-        var h = '<div class="fm-alloc"><div class="ttl">배분 근거</div><table>';
+        var ed = !!x._ov;
+        var h = '<div class="fm-alloc"><div class="ttl">배분 근거' +
+                (ed ? '<span class="al-ed">수정됨</span>' : '') + '</div><table>';
         if (d.use) h += row('건물 주용도', '<b>' + escv(d.use) + '</b>');
         if (d.st) h += row('주구조', escv(d.st));
         if (d.cls) h += row('단가표 적용', escv(d.cls) + (d.cst ? ' / ' + escv(d.cst) : ''));
-        if (d.uc) h += row('재조달 표준단가' + (d.gr ? ' (급수' + d.gr + ')' : ''),
-                           '<b>' + fmtWon(d.uc) + '</b> 원/㎡');
-        if (d.life) h += row('내용연수 · 경과연수',
-                             d.life + '년 · ' + (d.age ? d.age.toFixed(1) : '–') + '년');
+        // 재조달 표준단가·내용연수는 평가자가 직접 수정 → 아래 값들이 즉시 재계산된다
+        h += row('재조달 표준단가' + (d.gr ? ' (급수' + d.gr + ')' : ''),
+                 '<input class="al-in" type="number" min="0" step="1000" data-al="uc" value="' +
+                 (d.uc || 0) + '"> 원/㎡');
+        h += row('내용연수 · 경과연수',
+                 '<input class="al-in sm" type="number" min="1" step="1" data-al="life" value="' +
+                 (d.life || 0) + '">년 · ' + (d.age ? d.age.toFixed(1) : '–') + '년');
         if (d.res != null) h += row('잔가율 (정액법)', (d.res * 100).toFixed(1) + '%');
         if (d.ba) h += row('건물 공부면적', fmtWon(Math.round(d.ba * 100) / 100) + ' ㎡');
         if (d.bp) h += row('건물가격', fmtWon(Math.round(d.bp)) + ' 원');
         if (d.amt) h += row('거래금액', fmtWon(d.amt) + ' 원');
         if (d.lp) h += row('토지배분액', '<b>' + fmtWon(Math.round(d.lp)) + '</b> 원');
         if (d.la) h += row('토지 거래면적', fmtWon(Math.round(d.la * 10) / 10) + ' ㎡');
-        h += '</table><div class="eq">건물가격 = 표준단가 × 잔가율 × 건물면적<br>' +
-             '토지단가 = (거래금액 − 건물가격) ÷ 토지면적</div></div>';
+        h += '</table><div class="eq">잔가율 = (내용연수 − 경과연수) ÷ 내용연수<br>' +
+             '건물가격 = 표준단가 × 잔가율 × 건물면적<br>' +
+             '토지단가 = (거래금액 − 건물가격) ÷ 토지면적</div>';
+        if (!(x.p > 0)) h += '<div class="al-warn">건물가격이 거래금액 이상 — 토지배분액이 0 이하라 통계에서 빠집니다</div>';
+        if (ed) h += '<button class="al-rst" data-al-reset>↺ 원래 값으로 (재조달 ' +
+                     fmtWon(x._orig.uc) + ' · 내용연수 ' + x._orig.life + '년)</button>';
+        h += '</div>';
         return h;
     }
 
@@ -902,7 +996,7 @@
             var toks = String(x.a || '').split(' ');
             var loc = x.l + (toks.length === 5 ? ' ' + toks[4] : '');
             var el = document.createElement('div');
-            el.innerHTML = '<div class="vm t' + x.t + '">' +
+            el.innerHTML = '<div class="vm t' + x.t + (x._ov ? ' edited' : '') + '">' +
                 '<div class="vm-loc">' + escv(loc) + '</div>' +
                 '<div class="vm-top"><span class="vm-z">' + zshort(x.z) + '</span>' +
                 '<span class="vm-j">' + escv(jdOf(x) || META.uses[x.u]) + '</span></div>' +
@@ -1054,11 +1148,13 @@
         var sel = LAST_SEL;
         // ① 사례 목록
         var head = ['유형', '시군구', '읍면', '리', '용도지역', '이용상황', '연도',
-                    '토지단가(원/㎡)', '개별공시지가(원/㎡)', '개공비율', '배분품질'];
+                    '토지단가(원/㎡)', '개별공시지가(원/㎡)', '개공비율', '배분품질', '비고'];
         var data = sel.map(function (x) {
             return [TYPES[x.t], x.s, x.e, x.l, META.zones[x.z], META.uses[x.u], x.y || '',
                     x.p || '', x.g || '', x.r,
-                    x.t === 2 ? ((x.q || 0) === 0 ? 'O 사용가능' : '△ 검토필요') : ''];
+                    x.t === 2 ? ((x.q || 0) === 0 ? 'O 사용가능' : '△ 검토필요') : '',
+                    x._ov ? '재조달 ' + x.d.uc.toLocaleString('ko-KR') +
+                            ' · 내용연수 ' + x.d.life + '년으로 수정' : ''];
         });
         // ② 통계
         var st = LAST_ST;
@@ -1149,7 +1245,9 @@
         renderFilters();
         var sel = ROWS.filter(pass);
         LAST_SEL = sel;
-        if (infoOv && INFO_X && !pass(INFO_X)) { infoOv.setMap(null); infoOv = null; INFO_X = null; }
+        if (infoOv && INFO_X && !KEEP_INFO && !pass(INFO_X)) {
+            infoOv.setMap(null); infoOv = null; INFO_X = null;
+        }
         document.getElementById('cnt-sel').textContent = sel.length.toLocaleString();
         document.getElementById('cnt-all').textContent = ROWS.length.toLocaleString();
         renderStats(sel.filter(function (x) { return x.t !== 3; }));
@@ -1490,6 +1588,7 @@
         if (ev.key === 'Escape') closeCartModal();
     });
 
+    loadAlloc();
     loadCart();
     renderMatrix();
 
