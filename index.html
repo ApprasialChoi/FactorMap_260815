@@ -1294,7 +1294,8 @@
             infoOv.setMap(null); infoOv = null; INFO_X = null;
         }
         document.getElementById('cnt-sel').textContent = sel.length.toLocaleString();
-        document.getElementById('cnt-all').textContent = ROWS.length.toLocaleString();
+        document.getElementById('cnt-all').textContent =
+            ROWS.reduce(function (n, x) { return n + (x._del ? 0 : 1); }, 0).toLocaleString();
         renderStats(sel.filter(function (x) { return x.t !== 3; }));
         renderMapAndList();
         renderBounds();
@@ -1368,7 +1369,7 @@
     function fillDatalists() {
         [['dl-sgg', 's'], ['dl-emd', 'e'], ['dl-ri', 'l']].forEach(function (pr) {
             var seen = {}, el = document.getElementById(pr[0]);
-            ROWS.forEach(function (x) { if (x.t < 3 && x[pr[1]]) seen[x[pr[1]]] = 1; });
+            ROWS.forEach(function (x) { if (!x._del && x[pr[1]] && x[pr[1]] !== '미상') seen[x[pr[1]]] = 1; });
             el.innerHTML = Object.keys(seen).sort().map(function (v) {
                 return '<option value="' + escv(v) + '"></option>'; }).join('');
         });
