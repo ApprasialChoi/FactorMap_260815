@@ -164,7 +164,7 @@
     .ri-item .nm { font-weight: 700; color: #2d3748; flex: 1; }
     .ri-item .nm small { font-weight: 400; color: #a0aec0; margin-left: 4px; }
     .ri-item .md { font-weight: 700; color: #0051af; width: 52px; text-align: right; }
-    .ri-item .ct { color: #718096; width: 58px; text-align: right; font-size: 11px; }
+    .ri-item .ct { color: #718096; width: 76px; text-align: right; font-size: 11px; white-space: nowrap; }
     .empty-state { padding: 30px 20px; text-align: center; color: #a0aec0; font-size: 12px; }
 
     /* 밸류맵식 개별 마커 — 1줄: 용도지역|지대, 2줄: 토지단가 */
@@ -679,12 +679,13 @@
     }
 
     function riAgg() {
+        // v = 사례 지표값(중위값·통계용, 표준지 제외) · ns = 표준지 건수(표시용)
         var by = {};
         ROWS.forEach(function (x) {
-            if (x.t === 3) return;                 // 표준지 — 지표 없음
             if (!passNoRi(x)) return;
             var k = x.s + '|' + x.e + '|' + x.l;
-            (by[k] = by[k] || []).push(val(x));
+            var e = by[k] || (by[k] = {v: [], ns: 0});
+            if (x.t === 3) e.ns++; else e.v.push(val(x));
         });
         return by;
     }
@@ -980,12 +981,13 @@
         var listEl = document.getElementById('ri-list');
         listEl.innerHTML = '';
         var entries = Object.keys(by).map(function (k) {
-            var st = by[k].length >= 3 ? stats(by[k]) : null;
-            var md = st ? quantile(st.ref, 0.5) : (by[k].length ? by[k].slice().sort(function(a,b){return a-b;})[Math.floor(by[k].length/2)] : NaN);
-            return {k: k, n: by[k].length, md: md};
-        }).sort(function (a, b) { return b.n - a.n; });
+            var v = by[k].v;
+            var st = v.length >= 3 ? stats(v) : null;
+            var md = st ? quantile(st.ref, 0.5) : (v.length ? v.slice().sort(function(a,b){return a-b;})[Math.floor(v.length/2)] : NaN);
+            return {k: k, n: v.length, ns: by[k].ns, md: md};
+        }).sort(function (a, b) { return b.n - a.n || b.ns - a.ns; });
 
-        if (!entries.length) listEl.innerHTML = '<div class="empty-state">조건에 맞는 사례가 없습니다</div>';
+        if (!entries.length) listEl.innerHTML = '<div class="empty-state">조건에 맞는 자료가 없습니다</div>';
 
         // 색 스케일 : 지표별로 표본 분포에 맞춤
         var mds = entries.map(function (e) { return e.md; }).filter(isFinite).sort(function (a, b) { return a - b; });
@@ -1002,7 +1004,9 @@
             if (ll && KM) {
                 var pel = document.createElement('div');
                 pel.innerHTML = '<span class="ri-pill' + (sel ? ' sel' : '') + '"><span class="dot" style="background:' + colorOf(e.md) + '"></span>' +
-                          parts[2] + ' ' + short(e.md) + ' <small>n=' + e.n + '</small></span>';
+                          parts[2] + (e.n ? ' ' + short(e.md) : '') + ' <small>' +
+                          (e.n ? 'n=' + e.n : '') + (e.ns ? (e.n ? ' · ' : '') + '표' + e.ns : '') +
+                          '</small></span>';
                 pel.firstChild.onclick = function () {
                     if (S.ris[e.k]) delete S.ris[e.k]; else S.ris[e.k] = 1;
                     refresh();
@@ -1015,8 +1019,9 @@
             var it = document.createElement('div');
             it.className = 'ri-item' + (sel ? ' sel' : '');
             it.innerHTML = '<span class="nm">' + parts[2] + '<small>' + parts[0] + ' ' + parts[1] + '</small></span>' +
-                           '<span class="md">' + short(e.md) + '</span>' +
-                           '<span class="ct">' + e.n + '건</span>';
+                           '<span class="md">' + (e.n ? short(e.md) : '–') + '</span>' +
+                           '<span class="ct">' + (e.n ? e.n + '건' : '') +
+                           (e.ns ? (e.n ? ' · ' : '') + '표' + e.ns : '') + '</span>';
             it.onclick = function () {
                 if (S.ris[e.k]) delete S.ris[e.k]; else S.ris[e.k] = 1;
                 refresh();
@@ -1072,12 +1077,12 @@
         }
         // ③ 리별
         var by = riAgg();
-        var s3 = [['시군구', '읍면', '리', 'n', '정제중위(' + M().label + ')']];
+        var s3 = [['시군구', '읍면', '리', 'n', '정제중위(' + M().label + ')', '표준지 수']];
         Object.keys(by).sort().forEach(function (k) {
-            var a = by[k], p = k.split('|');
+            var a = by[k].v, p = k.split('|');
             var m = a.length >= 3 ? quantile(stats(a).ref, 0.5)
                                   : a.slice().sort(function (x, y) { return x - y; })[Math.floor(a.length / 2)];
-            s3.push([p[0], p[1], p[2], a.length, m]);
+            s3.push([p[0], p[1], p[2], a.length, a.length ? m : '', by[k].ns || '']);
         });
         // ④ 조건
         var s4 = [['항목', '값']].concat(condText())
