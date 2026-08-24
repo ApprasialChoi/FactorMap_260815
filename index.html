@@ -417,6 +417,7 @@
 <script src="data/records.js?v=202608232129"></script>
 <script src="data/boundaries.js?v=202608232129"></script>
 <script src="data/parcels.js?v=202608232129"></script>
+<script src="data/cart_shared.js?v=202608232129"></script>
 <script>
 (function () {
     'use strict';
@@ -1622,6 +1623,11 @@
     function loadCart() {
         try {
             var d = JSON.parse(localStorage.getItem('fmCart1') || 'null');
+            // 이 기기에 저장분이 없으면 저장소에 커밋된 공유 스냅샷을 기본값으로
+            var empty = !d || (!(d.items || []).length &&
+                               !Object.keys(d.conf || {}).length &&
+                               !Object.keys(d.notes || {}).length);
+            if (empty && window.FM_CART_SHARED) d = window.FM_CART_SHARED;
             if (!d) return;
             CART.items = (d.items || []).map(function (k) { return CIDX[k]; })
                 .filter(function (i) { return i != null; });
@@ -1802,7 +1808,8 @@
                 }).join('') + '</table>') + '</div>';
         });
         h += '<div class="dl-row" style="margin-top:12px;">' +
-             '<button class="btn primary" id="cm-xlsx">엑셀로 내보내기</button></div>';
+             '<button class="btn primary" id="cm-xlsx">엑셀로 내보내기</button>' +
+             '<button class="btn" id="cm-share" title="복사한 코드를 전산 담당에게 전달하면 커밋되어 어느 기기에서든 보입니다">공유용 코드 복사</button></div>';
         document.getElementById('cm-title').textContent = CM_CELL
             ? MZL[MZ.indexOf(+CM_CELL.split('|')[0])] + ' × ' + MU[+CM_CELL.split('|')[1]] + ' 후보'
             : '후보 장바구니 전체';
@@ -1816,6 +1823,8 @@
         });
         var xb = body.querySelector('#cm-xlsx');
         if (xb) xb.onclick = exportCart;
+        var sb = body.querySelector('#cm-share');
+        if (sb) sb.onclick = copyShareCode;
         Array.prototype.forEach.call(body.querySelectorAll('[data-note]'), function (ta) {
             ta.oninput = function () {
                 var c = ta.getAttribute('data-note');
@@ -1876,6 +1885,39 @@
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([head].concat(data)), '후보목록');
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s2), '칸별 선정현황');
         XLSX.writeFile(wb, '후보장바구니_' + stamp() + '.xlsx');
+    }
+
+    function copyShareCode() {
+        var conf = {};
+        Object.keys(CART.conf).forEach(function (c) {
+            conf[c] = {};
+            ['p', 'g', 's'].forEach(function (sl) {
+                if (CART.conf[c][sl] != null) conf[c][sl] = CKEY[CART.conf[c][sl]];
+            });
+        });
+        var txt = 'window.FM_CART_SHARED = ' + JSON.stringify({
+            items: CART.items.map(function (i) { return CKEY[i]; }),
+            conf: conf, notes: CART.notes,
+            savedAt: new Date().toISOString().slice(0, 16)
+        }) + ';\n';
+        function done(ok) {
+            alert(ok ? '공유용 코드를 복사했습니다.\n클로드에게 붙여넣으면 커밋되어 어느 기기에서든 보입니다.'
+                     : '복사에 실패했습니다 — 콘솔(F12)에 출력해 두었습니다.');
+            if (!ok) console.log(txt);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(txt).then(function () { done(true); },
+                                                    function () { done(false); });
+        } else {
+            var ta = document.createElement('textarea');
+            ta.value = txt;
+            document.body.appendChild(ta);
+            ta.select();
+            var ok = false;
+            try { ok = document.execCommand('copy'); } catch (e) {}
+            document.body.removeChild(ta);
+            done(ok);
+        }
     }
 
     function closeCartModal() { document.getElementById('cart-modal').style.display = 'none'; }

@@ -330,7 +330,7 @@ def main():
     if os.path.exists(idx):
         h = open(idx, encoding='utf-8').read()
         stamp = time.strftime('%Y%m%d%H%M')
-        h2 = re.sub(r'(<script src="data/(?:records|boundaries|parcels)\.js)(\?v=\d+)?(">)',
+        h2 = re.sub(r'(<script src="data/(?:records|boundaries|parcels|cart_shared)\.js)(\?v=\d+)?(">)',
                     lambda m: m.group(1) + '?v=' + stamp + m.group(3), h)
         if h2 != h:
             open(idx, 'w', encoding='utf-8').write(h2)
