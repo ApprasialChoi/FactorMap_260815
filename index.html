@@ -428,6 +428,14 @@
             if (x && x._id) { x._new = true; ROWS.push(x); }
         });
     } catch (e) {}
+    // 공유 스냅샷에 실린 직접추가 사례 — 이 기기에 같은 _id 가 없을 때만 합류
+    try {
+        var _ids = {};
+        ROWS.forEach(function (x) { if (x._id) _ids[x._id] = 1; });
+        ((window.FM_CART_SHARED || {}).added || []).forEach(function (x) {
+            if (x && x._id && !_ids[x._id]) { x._new = true; ROWS.push(x); }
+        });
+    } catch (e) {}
     ROWS.forEach(function (x, i) { x._i = i; });
     ROWS.forEach(function (x) {                       // 신규 리는 중심좌표도 등록 (지도 라벨용)
         if (!x._new || !x.ll) return;
