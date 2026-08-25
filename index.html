@@ -414,10 +414,10 @@
 
 <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=231190ac1aca72ada0b739110d8a0eb4&libraries=services"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="data/records.js?v=202608232129"></script>
-<script src="data/boundaries.js?v=202608232129"></script>
-<script src="data/parcels.js?v=202608232129"></script>
-<script src="data/cart_shared.js?v=202608240712"></script>
+<script src="data/records.js?v=202608251239"></script>
+<script src="data/boundaries.js?v=202608251239"></script>
+<script src="data/parcels.js?v=202608251239"></script>
+<script src="data/cart_shared.js?v=202608251239"></script>
 <script>
 (function () {
     'use strict';
@@ -939,6 +939,10 @@
     // 평가목적 — 평가사례(t=0)만 보유
     var PURPOSES = META.purposes || [];
     function puOf(x) { return (x.t === 0 && x.pu != null) ? (PURPOSES[x.pu] || '') : ''; }
+    // 시점 — 연월일이 있으면 그대로, 없으면 연도만. 라벨은 사례 유형에 따라 다르다
+    function dtOf(x) { return x.dt || (x.y ? String(x.y) : ''); }
+    function dtLabel(x) { return x.t === 0 ? '기준시점' : (x.t === 3 ? '공시기준일' : '거래시점'); }
+    function dtCell(x) { return dtOf(x) || '–'; }
     var PU_SHORT = {'법원경매': '경매', '담보': '담보', '기타 담보': '담보', '시가참고': '시가',
                     '자산재평가': '재평가', '자산재평가(IFRS)': '재평가', '조세': '조세',
                     '공매(국세,지방세)': '공매', '공매(국공유재산)': '공매', '공매(NPL)': '공매',
@@ -969,14 +973,14 @@
     function vmPopup(x) {
         if (x.t === 3) {
             return '<h4>표준지</h4>' + escv((x.s !== '미상' ? x.s + ' ' : '') + x.a) + '<br>' +
-                '공시년도 ' + (x.y || '–') + ' · 공시지가 <b>' + fmtWon(x.g) + '</b> 원/㎡' +
+                '공시기준일 ' + dtCell(x) + ' · 공시지가 <b>' + fmtWon(x.g) + '</b> 원/㎡' +
                 stdHtml(x) + cartBtnHtml(x);
         }
         return '<h4>' + TYPES[x.t] +
             (x.t === 2 ? ' · <span style="color:#c2410c;">' + ((x.q || 0) === 0 ? 'O 사용가능' : '△ 검토필요') + '</span>' : '') + '</h4>' +
             escv(x.a || (x.s + ' ' + x.e + ' ' + x.l)) + '<br>' +
             (puOf(x) ? '평가목적 <b>' + escv(puOf(x)) + '</b><br>' : '') +
-            '연도 ' + (x.y || '–') + ' · ' + escv(META.zones[x.z]) +
+            dtLabel(x) + ' ' + dtCell(x) + ' · ' + escv(META.zones[x.z]) +
             (jdOf(x) ? ' · 지대 ' + escv(jdOf(x)) : '') + '<br>' +
             '토지단가 <b>' + fmtWon(x.p) + '</b> 원/㎡' +
             (x.g ? ' · 공시지가 ' + fmtWon(x.g) : '') +
@@ -1217,11 +1221,11 @@
     function buildSheets() {
         var sel = LAST_SEL;
         // ① 사례 목록
-        var head = ['유형', '평가목적', '소재지', '시군구', '읍면', '리', '용도지역', '이용상황', '연도',
+        var head = ['유형', '평가목적', '소재지', '시군구', '읍면', '리', '용도지역', '이용상황', '시점(연월일)', '연도',
                     '토지단가(원/㎡)', '개별공시지가(원/㎡)', '개공비율', '배분품질', '비고'];
         var data = sel.map(function (x) {
             return [TYPES[x.t], puOf(x), x.a || (x.s + ' ' + x.e + ' ' + x.l),
-                    x.s, x.e, x.l, META.zones[x.z], META.uses[x.u], x.y || '',
+                    x.s, x.e, x.l, META.zones[x.z], META.uses[x.u], dtOf(x), x.y || '',
                     x.p || '', x.g || '', x.r,
                     x.t === 2 ? ((x.q || 0) === 0 ? 'O 사용가능' : '△ 검토필요') : '',
                     x._new ? '직접 추가' :
@@ -1531,11 +1535,11 @@
         AM_EDIT = null;
         document.getElementById('am-title').textContent = '직접 추가한 사례 (' + arr.length + '건)';
         var h = arr.length ? '<table class="cm-tbl" style="margin-top:10px;"><tr><th>유형</th><th>소재지</th>' +
-            '<th>연도</th><th>용도지역</th><th>이용</th><th>토지단가</th><th>공시지가</th><th>개공비율</th><th></th></tr>' +
+            '<th>시점</th><th>용도지역</th><th>이용</th><th>토지단가</th><th>공시지가</th><th>개공비율</th><th></th></tr>' +
             arr.map(function (x) {
                 return '<tr><td style="color:' + TCOLOR[x.t] + '">' + TSHORT[x.t] + '</td>' +
                     '<td>' + escv(x.s + ' ' + x.e + ' ' + x.l) + '</td>' +
-                    '<td>' + (x.y || '–') + '</td>' +
+                    '<td>' + dtCell(x) + '</td>' +
                     '<td>' + escv(META.zones[x.z]) + '</td>' +
                     '<td>' + escv(META.uses[x.u]) + '</td>' +
                     '<td>' + fmtWon(x.p) + '</td><td>' + fmtWon(x.g) + '</td>' +
@@ -1808,7 +1812,7 @@
                         '<td>' + escv(puShort(x)) + '</td>' +
                         '<td>' + escv(x.t === 3 ? (x.s !== '미상' ? x.s + ' ' + x.a : x.a)
                                                  : shortAddr(x.a || (x.s + ' ' + x.e + ' ' + x.l))) + '</td>' +
-                        '<td>' + (x.y || '–') + '</td>' +
+                        '<td>' + dtCell(x) + '</td>' +
                         '<td>' + fmtWon(x.p) + '</td>' +
                         '<td>' + fmtWon(x.g) + '</td>' +
                         '<td>' + (isFinite(x.r) && x.r ? Number(x.r).toFixed(3) : '–') + '</td>' +
@@ -1856,7 +1860,7 @@
                    (ROWS[b].y || 0) - (ROWS[a].y || 0);
         });
         var head = ['용도지역', '이용상황', '확정', '유형', '평가목적', '소재지',
-                    '시군구', '읍면', '리', '연도', '토지단가(원/㎡)', '개별공시지가(원/㎡)',
+                    '시군구', '읍면', '리', '시점(연월일)', '연도', '토지단가(원/㎡)', '개별공시지가(원/㎡)',
                     '개공비율', '배분품질', '의견', '비고'];
         var data = arr.map(function (i) {
             var x = ROWS[i], c = cellOf(x), e = CART.conf[c] || {};
@@ -1864,7 +1868,7 @@
                    : (e.s === i) ? '표준지 확정' : '';
             return [MZL[MZ.indexOf(+c.split('|')[0])], MU[+c.split('|')[1]], cf, TYPES[x.t],
                     puOf(x), x.a || (x.s + ' ' + x.e + ' ' + x.l),
-                    x.s, x.e, x.l, x.y || '', x.p || '', x.g || '', x.r,
+                    x.s, x.e, x.l, dtOf(x), x.y || '', x.p || '', x.g || '', x.r,
                     x.t === 2 ? ((x.q || 0) === 0 ? 'O 사용가능' : '△ 검토필요') : '',
                     (CART.notes[c] || '').replace(/\s+/g, ' ').trim(),
                     x._new ? '직접 추가' :

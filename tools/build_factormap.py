@@ -14,7 +14,7 @@ SRC = r'\\server_new\공용폴더\2. 업무Part\♣해남 솔라시도\원준\�
 OUT = r'D:\Dropbox\■ 전산TF\Github Clone\FactorMap_260815\data'
 HERE = os.path.dirname(os.path.abspath(__file__))
 GEO = json.load(open(os.path.join(HERE, 'fm_geo_cache.json'), encoding='utf-8'))
-STD_SRC = ('//server_new/공용폴더/2. 업무Part/♣해남 솔라시도/원준/★솔라시도_GIS공간분석_2261필지_v5(260820).xlsx')
+STD_SRC = ('//server_new/공용폴더/2. 업무Part/♣해남 솔라시도/원준/★솔라시도_GIS공간분석_2261필지_v5(260824).xlsx')
 STD_GEO = json.load(open(os.path.join(HERE, 'std_geo.json'), encoding='utf-8'))
 
 ZONES = ['일반상업지역', '제1종전용주거지역', '준공업지역', '제3종일반주거지역',
@@ -51,6 +51,20 @@ ZMAP.update({
     '1종전주': '제1종전용주거지역', '2종전주': '제2종전용주거지역',
 })
 
+
+
+def fdate(v):
+    """셀 값 → 'YYYY-MM-DD' (연월일 없으면 None)"""
+    import datetime
+    if isinstance(v, datetime.datetime):
+        return v.strftime('%Y-%m-%d')
+    if isinstance(v, datetime.date):
+        return v.strftime('%Y-%m-%d')
+    t = str(v or '').strip()
+    m = re.match(r'(\d{4})[-./년]\s*(\d{1,2})[-./월]\s*(\d{1,2})', t)
+    if m:
+        return '%s-%02d-%02d' % (m.group(1), int(m.group(2)), int(m.group(3)))
+    return None
 
 
 def fnum(v):
@@ -121,6 +135,7 @@ def main():
             continue
         jb = clean_jibun(ws.cell(r, 5).value)
         y = str(ws.cell(r, 2).value or '')[:4]
+        dt = fdate(ws.cell(r, 12).value)          # L열 기준시점
         u = uidx(ws.cell(r, 18).value)
         if u < 0:
             drop['평가:지목 제외그룹(도로 등)'] += 1
@@ -129,6 +144,7 @@ def main():
                      's': toks[1], 'e': toks[2], 'l': toks[3],
                      'z': zidx(ws.cell(r, 20).value), 'u': u,
                      'j': jidx(jd), 'y': int(y) if y.isdigit() else 0,
+                     'dt': dt,
                      'r': round(rt, 3) if rt else None,
                      'p': int(up) if up else None, 'g': int(gp) if gp else None,
                      'q': 0, 'a': so + (' ' + jb if jb else ''),
@@ -163,7 +179,8 @@ def main():
         attr = {'sgg': sgg, 'loc': loc, 'z': zidx(ws.cell(r, 8).value),
                 'u': uidx(ws.cell(r, 7).value), 'jd': jd,
                 'g': fnum(ws.cell(r, 18).value),
-                'y': str(ws.cell(r, 10).value or '')[:4]}
+                'y': str(ws.cell(r, 10).value or '')[:4],
+                'dt': fdate(ws.cell(r, 10).value)}        # J열 거래시점
         land_attr[(no, jbraw)] = attr
 
         if jd == '제외':
@@ -184,6 +201,7 @@ def main():
         rows.append({'t': 1, 's': sgg.split()[-1], 'e': emd, 'l': ri,
                      'z': attr['z'], 'u': attr['u'], 'j': jidx(jd),
                      'y': int(y) if y.isdigit() else 0,
+                     'dt': attr.get('dt'),
                      'r': round(up / attr['g'], 3) if attr['g'] else None,
                      'p': int(up), 'g': int(attr['g']) if attr['g'] else None,
                      'q': 0, 'a': sgg + ' ' + loc + (' ' + jb if jb else ''),
@@ -246,6 +264,7 @@ def main():
                      'z': attr.get('z', len(ZONES) - 1), 'u': attr.get('u', 3),
                      'j': jidx(attr.get('jd', '')),
                      'y': int(y) if y.isdigit() else 0,
+                     'dt': attr.get('dt'),
                      'r': round(rt, 3) if rt else None,
                      'd': d,
                      'p': int(up), 'g': int(attr['g']) if attr.get('g') else None,
@@ -283,6 +302,7 @@ def main():
         rows.append({'t': 3, 's': geo.get('sgg') or '미상', 'e': toks[0], 'l': toks[1],
                      'z': zidx(row[7]), 'u': JD_STD[jd], 'j': JD_STD[jd],
                      'y': int(y) if y.isdigit() else 0,
+                     'dt': (y + '-01-01') if y.isdigit() else None,
                      'r': None, 'p': None, 'g': int(gp) if gp else None,
                      'q': 0, 'a': addr, 'll': geo.get('ll'), 'sp': sp})
 
