@@ -164,6 +164,39 @@ def main():
             'cls': str(ws.cell(r, 27).value or '').strip(),
             'cst': str(ws.cell(r, 28).value or '').strip(),
         }
+    # ── 거래 묶음 추정 ──
+    #   원본에 '거래 식별자'가 없다(순번은 자료 묶음 번호일 뿐 — 1-1 에 11행, 서로 다른
+    #   지역·거래가 섞여 있다). 한 거래가 여러 필지에 걸치면 금액이 필지별로 나뉘어
+    #   기재되므로, 같은 시군구·리·거래시점이면서 단가 편차가 15% 이내인 필지들만
+    #   같은 거래로 보고 총액을 합산한다. 편차가 크면(같은 날 다른 거래) 묶지 않는다.
+    SPREAD_TOL = 0.15
+    gsum = {}
+    for r in range(2, ws.max_row + 1):
+        if str(ws.cell(r, 9).value or '').strip() != '토지':
+            continue
+        k = (str(ws.cell(r, 2).value or '').strip(),
+             str(ws.cell(r, 3).value or '').strip(),
+             fdate(ws.cell(r, 10).value))
+        if not k[0] or not k[2]:
+            continue
+        gsum.setdefault(k, []).append({
+            'jb': clean_jibun(ws.cell(r, 4).value),
+            'am': fnum(ws.cell(r, 13).value),
+            'up': fnum(ws.cell(r, 14).value)})
+    group_of = {}
+    for k, items in gsum.items():
+        if len(items) < 2:
+            continue
+        ups = [i['up'] for i in items if i['up']]
+        if len(ups) < 2 or not all(i['am'] for i in items):
+            continue
+        if (max(ups) - min(ups)) / max(ups) > SPREAD_TOL:
+            continue                       # 같은 날·같은 리의 다른 거래로 본다
+        group_of[k] = {
+            'tam': int(round(sum(i['am'] for i in items))),
+            'gn': len(items),
+            'gl': [i['jb'] for i in items if i['jb']][:12]}
+
     land_attr = {}
     for r in range(2, ws.max_row + 1):
         if str(ws.cell(r, 9).value or '').strip() != '토지':
@@ -198,10 +231,14 @@ def main():
         jb = clean_jibun(jbraw)
         emd, ri = loc.split()
         y = attr['y']
+        am = fnum(ws.cell(r, 13).value)          # M열 거래금액 (해당 필지분)
+        gi = group_of.get((sgg, loc, attr.get('dt'))) or {}
         rows.append({'t': 1, 's': sgg.split()[-1], 'e': emd, 'l': ri,
                      'z': attr['z'], 'u': attr['u'], 'j': jidx(jd),
                      'y': int(y) if y.isdigit() else 0,
                      'dt': attr.get('dt'),
+                     'am': int(round(am)) if am else None,
+                     'tam': gi.get('tam'), 'gn': gi.get('gn'), 'gl': gi.get('gl'),
                      'r': round(up / attr['g'], 3) if attr['g'] else None,
                      'p': int(up), 'g': int(attr['g']) if attr['g'] else None,
                      'q': 0, 'a': sgg + ' ' + loc + (' ' + jb if jb else ''),

@@ -119,6 +119,8 @@
     .cm-tbl td { padding: 3px 6px; border-bottom: 1px solid #f1f5f9; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .cm-tbl td:nth-child(1), .cm-tbl td:nth-child(2), .cm-tbl td:nth-child(3) { text-align: left; }
     .cm-tbl tr.cf td { background: #f0f7ff; font-weight: 700; }
+    .cm-gn { color: #0d9488; background: #ccfbf1; border-radius: 4px; padding: 0 3px;
+             font-size: 9.5px; font-weight: 700; margin-left: 3px; }
     .cm-star { cursor: pointer; color: #cbd5e0; font-size: 13px; }
     .cm-star.on { color: #f59e0b; }
     .cm-del { cursor: pointer; color: #a0aec0; font-weight: 700; padding: 0 3px; }
@@ -414,10 +416,10 @@
 
 <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=231190ac1aca72ada0b739110d8a0eb4&libraries=services"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="data/records.js?v=202608251239"></script>
-<script src="data/boundaries.js?v=202608251239"></script>
-<script src="data/parcels.js?v=202608251239"></script>
-<script src="data/cart_shared.js?v=202608251239"></script>
+<script src="data/records.js?v=202608262157"></script>
+<script src="data/boundaries.js?v=202608262157"></script>
+<script src="data/parcels.js?v=202608262157"></script>
+<script src="data/cart_shared.js?v=202608262157"></script>
 <script>
 (function () {
     'use strict';
@@ -952,6 +954,30 @@
         return p ? (PU_SHORT[p] || p.slice(0, 3)) : '';
     }
     function fmtWon(v) { return v == null ? '–' : Number(v).toLocaleString('ko-KR'); }
+    // 거래금액 — 자릿수가 커서 억·만 단위로 줄여 쓴다 (정확한 값은 title 로)
+    function fmtAmt(v) {
+        if (!isFinite(v) || !v) return '–';
+        if (v >= 1e8) return String(Math.round(v / 1e7) / 10).replace(/\.0$/, '') + '억';
+        if (v >= 1e4) return Math.round(v / 1e4).toLocaleString('ko-KR') + '만';
+        return Number(v).toLocaleString('ko-KR');
+    }
+    //   t=1 거래사례 = 그 필지의 거래금액 · t=2 배분 = 그 사례의 거래금액(건물 포함)
+    function amtOf(x) {
+        if (x.t === 1) return x.am || null;
+        if (x.t === 2 && x.d) return x.d.amt || null;
+        return null;
+    }
+    // 한 거래가 여러 필지에 걸친 경우의 합계 (같은 리·같은 거래시점·단가 편차 15% 이내 추정)
+    function amtTitle(x) {
+        var am = amtOf(x);
+        if (!am) return '';
+        if (x.t === 1 && x.tam && x.gn > 1) {
+            return '동일거래 추정 ' + x.gn + '필지 합계 ' + fmtWon(x.tam) + '원' +
+                   (x.gl && x.gl.length ? ' (' + x.gl.join(', ') + ')' : '') +
+                   ' · 이 필지 ' + fmtWon(am) + '원';
+        }
+        return fmtWon(am) + '원' + (x.t === 2 ? ' (건물 포함 거래금액)' : '');
+    }
     function escv(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
         return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
 
@@ -982,6 +1008,12 @@
             (puOf(x) ? '평가목적 <b>' + escv(puOf(x)) + '</b><br>' : '') +
             dtLabel(x) + ' ' + dtCell(x) + ' · ' + escv(META.zones[x.z]) +
             (jdOf(x) ? ' · 지대 ' + escv(jdOf(x)) : '') + '<br>' +
+            (amtOf(x) && x.t === 1
+                ? '거래금액 <b>' + fmtWon(amtOf(x)) + '</b> 원' +
+                  (x.tam && x.gn > 1
+                      ? ' <span style="color:#0d9488;font-weight:700;">· 동일거래 ' + x.gn +
+                        '필지 합계 ' + fmtWon(x.tam) + '원</span>' : '') + '<br>'
+                : '') +
             '토지단가 <b>' + fmtWon(x.p) + '</b> 원/㎡' +
             (x.g ? ' · 공시지가 ' + fmtWon(x.g) : '') +
             (x.r ? ' · 개공비율 <b>' + Number(x.r).toFixed(3) + '</b>' : '') +
@@ -1222,10 +1254,13 @@
         var sel = LAST_SEL;
         // ① 사례 목록
         var head = ['유형', '평가목적', '소재지', '시군구', '읍면', '리', '용도지역', '이용상황', '시점(연월일)', '연도',
+                    '거래금액(해당 필지, 원)', '총 거래금액(동일거래 추정, 원)', '묶음 필지수',
                     '토지단가(원/㎡)', '개별공시지가(원/㎡)', '개공비율', '배분품질', '비고'];
         var data = sel.map(function (x) {
             return [TYPES[x.t], puOf(x), x.a || (x.s + ' ' + x.e + ' ' + x.l),
                     x.s, x.e, x.l, META.zones[x.z], META.uses[x.u], dtOf(x), x.y || '',
+                    amtOf(x) || '', (x.t === 1 && x.gn > 1 ? x.tam : '') || '',
+                    (x.t === 1 && x.gn > 1 ? x.gn : '') || '',
                     x.p || '', x.g || '', x.r,
                     x.t === 2 ? ((x.q || 0) === 0 ? 'O 사용가능' : '△ 검토필요') : '',
                     x._new ? '직접 추가' :
@@ -1799,7 +1834,7 @@
                 escv(CART.notes[c] || '') + '</textarea>' +
                 (arr.length === 0 ? '' :
                 '<table class="cm-tbl"><tr><th>확정</th><th>유형</th><th>목적</th><th>소재지</th><th>연도</th>' +
-                '<th>토지단가</th><th>공시지가</th><th>개공비율</th><th></th></tr>' +
+                '<th>거래금액</th><th>토지단가</th><th>공시지가</th><th>개공비율</th><th></th></tr>' +
                 arr.map(function (i) {
                     var x = ROWS[i];
                     var cf = (e.p === i || e.g === i || e.s === i);
@@ -1813,6 +1848,10 @@
                         '<td>' + escv(x.t === 3 ? (x.s !== '미상' ? x.s + ' ' + x.a : x.a)
                                                  : shortAddr(x.a || (x.s + ' ' + x.e + ' ' + x.l))) + '</td>' +
                         '<td>' + dtCell(x) + '</td>' +
+                        '<td' + (amtOf(x) ? ' title="' + escv(amtTitle(x)) + '"' : '') + '>' +
+                            (amtOf(x) ? (x.t === 1 && x.tam && x.gn > 1
+                                ? fmtAmt(x.tam) + '<span class="cm-gn">' + x.gn + '필지</span>'
+                                : fmtAmt(amtOf(x))) : '–') + '</td>' +
                         '<td>' + fmtWon(x.p) + '</td>' +
                         '<td>' + fmtWon(x.g) + '</td>' +
                         '<td>' + (isFinite(x.r) && x.r ? Number(x.r).toFixed(3) : '–') + '</td>' +
@@ -1860,7 +1899,9 @@
                    (ROWS[b].y || 0) - (ROWS[a].y || 0);
         });
         var head = ['용도지역', '이용상황', '확정', '유형', '평가목적', '소재지',
-                    '시군구', '읍면', '리', '시점(연월일)', '연도', '토지단가(원/㎡)', '개별공시지가(원/㎡)',
+                    '시군구', '읍면', '리', '시점(연월일)', '연도',
+                    '거래금액(해당 필지, 원)', '총 거래금액(동일거래 추정, 원)', '묶음 필지수',
+                    '토지단가(원/㎡)', '개별공시지가(원/㎡)',
                     '개공비율', '배분품질', '의견', '비고'];
         var data = arr.map(function (i) {
             var x = ROWS[i], c = cellOf(x), e = CART.conf[c] || {};
@@ -1868,7 +1909,10 @@
                    : (e.s === i) ? '표준지 확정' : '';
             return [MZL[MZ.indexOf(+c.split('|')[0])], MU[+c.split('|')[1]], cf, TYPES[x.t],
                     puOf(x), x.a || (x.s + ' ' + x.e + ' ' + x.l),
-                    x.s, x.e, x.l, dtOf(x), x.y || '', x.p || '', x.g || '', x.r,
+                    x.s, x.e, x.l, dtOf(x), x.y || '',
+                    amtOf(x) || '', (x.t === 1 && x.gn > 1 ? x.tam : '') || '',
+                    (x.t === 1 && x.gn > 1 ? x.gn : '') || '',
+                    x.p || '', x.g || '', x.r,
                     x.t === 2 ? ((x.q || 0) === 0 ? 'O 사용가능' : '△ 검토필요') : '',
                     (CART.notes[c] || '').replace(/\s+/g, ' ').trim(),
                     x._new ? '직접 추가' :
