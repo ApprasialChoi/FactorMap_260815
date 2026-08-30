@@ -292,7 +292,9 @@
     <div class="panel-header">
         <h1>📊 그밖의요인 통계맵</h1>
         <div class="subtitle">개공비율(사례단가 ÷ 개별공시지가) 기반 · 해남·영암·무안</div>
-        <div class="panel-count">선택 <b id="cnt-sel">0</b>건 / 전체 <span id="cnt-all">0</span>건</div>
+        <div class="panel-count">선택 <b id="cnt-sel">0</b>건 / 전체 <span id="cnt-all">0</span>건
+            <div id="cnt-note" style="font-size:10.5px; opacity:.85; font-weight:600; margin-top:2px;"></div>
+        </div>
     </div>
     <div id="panel-scroll">
         <div class="filter-section">
@@ -622,7 +624,7 @@
     function renderStats(sel) {
         var body = document.getElementById('stat-body');
         var note = document.getElementById('stat-note');
-        document.getElementById('stat-head').textContent = M().head;
+        document.getElementById('stat-head').textContent = M().head + (KM ? ' — 화면 범위' : '');
         document.getElementById('ri-head').innerHTML =
             '리별 정제 중위값 <small>— ' + M().label + ' · 클릭하면 해당 리만 선택</small>';
         // 유형별 보조 카드 (평가 / 거래 / 배분 중위값)
@@ -1054,6 +1056,21 @@
         return h;
     }
 
+    // ── 지도 화면 범위 ── 지표 통계는 '지금 화면에 들어와 있는 사례'로만 낸다
+    function viewBox() {
+        if (!KM) return null;
+        var b = KM.getBounds();
+        if (!b) return null;
+        var sw = b.getSouthWest(), ne = b.getNorthEast();
+        return {s: sw.getLat(), w: sw.getLng(), n: ne.getLat(), e: ne.getLng()};
+    }
+    function inBox(x, vb) {
+        if (!vb) return true;                       // 지도 없으면 제한하지 않음
+        var an = anchorOf(x);
+        if (!an) return false;                      // 좌표 없는 사례는 화면에 못 띄운다
+        return an[0] >= vb.s && an[0] <= vb.n && an[1] >= vb.w && an[1] <= vb.e;
+    }
+
     function anchorOf(x) {
         var pc = PARCELS[x.a];
         return pc ? pc.c : x.ll;            // 필지 중심 우선, 없으면 지오코딩 좌표
@@ -1168,7 +1185,7 @@
         if (!KM) return;
         var showPills = !CART_ONLY && KM.getLevel() > VM_LEVEL;
         pillOvs.forEach(function (o) { o.setMap(showPills ? KM : null); });
-        renderMarkers();
+        refreshView();                 // 화면이 바뀌면 지표 통계도 다시 낸다
     }
     if (KM) {
         kakao.maps.event.addListener(KM, 'idle', updateLayerMode);
@@ -1238,7 +1255,11 @@
         var z = Object.keys(S.zones).map(function (i) { return META.zones[i]; }).join('·') || '전체';
         var u = Object.keys(S.uses).map(function (i) { return META.uses[i]; }).join('·') || '전체';
         var ri = Object.keys(S.ris).map(function (k) { return k.split('|')[2]; }).join('·');
-        return [['사례유형', t], ['시군구', S.sgg || '전체'], ['읍면', S.emd || '전체'],
+        var vb = viewBox();
+        return [['산출 범위', vb ? '지도 화면 범위 안의 사례만' : '전체(지도 미사용)'],
+                ['지도 범위(위도)', vb ? vb.s.toFixed(6) + ' ~ ' + vb.n.toFixed(6) : '–'],
+                ['지도 범위(경도)', vb ? vb.w.toFixed(6) + ' ~ ' + vb.e.toFixed(6) : '–'],
+                ['사례유형', t], ['시군구', S.sgg || '전체'], ['읍면', S.emd || '전체'],
                 ['리', ri || '전체'], ['용도지역', z], ['이용상황', u],
                 ['기간', S.yearMin ? S.yearMin + '년 이후' : '전체'],
                 ['토지단가 범위', (S.pMin || S.pMax)
@@ -1354,17 +1375,30 @@
     // ───────── 전체 갱신 ─────────
     function refresh() {
         renderFilters();
-        var sel = ROWS.filter(pass);
-        LAST_SEL = sel;
         if (infoOv && INFO_X && !KEEP_INFO && !pass(INFO_X)) {
             infoOv.setMap(null); infoOv = null; INFO_X = null;
         }
-        document.getElementById('cnt-sel').textContent = sel.length.toLocaleString();
-        document.getElementById('cnt-all').textContent =
-            ROWS.reduce(function (n, x) { return n + (x._del ? 0 : 1); }, 0).toLocaleString();
-        renderStats(sel.filter(function (x) { return x.t !== 3; }));
         renderMapAndList();
         renderBounds();
+        refreshView();                 // 통계·마커는 화면 범위에 따라
+    }
+
+    // 필터 통과분 중 '화면 범위 안'만으로 지표 통계를 낸다.
+    //   지도를 움직이면 idle 에서 다시 불려 통계가 화면을 따라간다.
+    function refreshView() {
+        var vb = viewBox();
+        var sel = ROWS.filter(pass);
+        var vis = sel.filter(function (x) { return inBox(x, vb); });
+        LAST_SEL = vis;                // 내려받기도 화면 기준으로 맞춘다
+        document.getElementById('cnt-sel').textContent = vis.length.toLocaleString();
+        document.getElementById('cnt-all').textContent =
+            ROWS.reduce(function (n, x) { return n + (x._del ? 0 : 1); }, 0).toLocaleString();
+        var noGeo = sel.filter(function (x) { return !anchorOf(x); }).length;
+        document.getElementById('cnt-note').innerHTML = vb
+            ? '지도 화면 범위 기준 · 필터 통과 ' + sel.length.toLocaleString() + '건' +
+              (noGeo ? ' (좌표 없음 ' + noGeo.toLocaleString() + '건 제외)' : '')
+            : '';
+        renderStats(vis.filter(function (x) { return x.t !== 3; }));
         renderMarkers();
         // 지표 결측으로 빠진 건수를 숨기지 않고 표시
         var noVal = 0;
@@ -1378,10 +1412,11 @@
             var zk = Object.keys(S.zones); if (zk.length && !S.zones[x.z]) return;
             var uk = Object.keys(S.uses); if (uk.length && !S.uses[x.u]) return;
             if (S.yearMin && x.y < S.yearMin) return;
+            if (!inBox(x, vb)) return;
             if (x.t !== 3 && (!isFinite(val(x)) || val(x) <= 0)) noVal++;
         });
         document.getElementById('dl-note').innerHTML =
-            '선택 <b>' + sel.length.toLocaleString() + '</b>건 · 시트 4개(사례목록·통계·리별·추출조건)' +
+            '선택 <b>' + vis.length.toLocaleString() + '</b>건(화면 범위) · 시트 4개(사례목록·통계·리별·추출조건)' +
             (noVal ? '<br><span style="color:#c05621">※ ' + M().label + ' 미기재 ' +
                      noVal.toLocaleString() + '건은 통계에서 제외됨</span>' : '');
     }
