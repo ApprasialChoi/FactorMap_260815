@@ -1188,6 +1188,21 @@
         syncLabelResetBtn();
     }
 
+    // 첫 화면을 데이터 전체 범위로 — 지도가 실제 크기를 가진 뒤에야 의미가 있다.
+    //   숨은 탭에서 열리면 0 크기로 로드되므로, 보이게 된 다음 한 번 더 맞춘다.
+    var FITTED = false;
+    function fitAllMap() {
+        if (!KM) return;
+        KM.relayout();
+        var el = document.getElementById('kakao-map');
+        if (!el || el.clientWidth < 80 || el.clientHeight < 80) return;
+        var kb = new kakao.maps.LatLngBounds();
+        Object.keys(CENTERS).forEach(function (k) { kb.extend(KLL(CENTERS[k])); });
+        if (kb.isEmpty()) return;
+        KM.setBounds(kb, 40);
+        FITTED = true;
+    }
+
     function updateLayerMode() {
         if (!KM) return;
         var showPills = !CART_ONLY && KM.getLevel() > VM_LEVEL;
@@ -1204,6 +1219,7 @@
             clearTimeout(rlTimer);
             rlTimer = setTimeout(function () {
                 KM.relayout();
+                if (!FITTED) fitAllMap();        // 0 크기로 로드된 경우 이제야 맞춘다
                 refreshView();
             }, 150);
         }
@@ -2104,14 +2120,8 @@
 
     // 첫 화면: 데이터 전체 범위로
     if (KM) {
-        var fitAll = function () {
-            KM.relayout();                       // 컨테이너 실제 크기 반영 후
-            var kb = new kakao.maps.LatLngBounds();
-            Object.keys(CENTERS).forEach(function (k) { kb.extend(KLL(CENTERS[k])); });
-            if (!kb.isEmpty()) KM.setBounds(kb, 40);
-        };
-        fitAll();
-        setTimeout(fitAll, 400);                 // 레이아웃이 늦게 잡히는 경우 대비
+        fitAllMap();
+        setTimeout(fitAllMap, 400);              // 레이아웃이 늦게 잡히는 경우 대비
     }
 })();
 </script>
