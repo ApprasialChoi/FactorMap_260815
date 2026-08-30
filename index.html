@@ -1059,10 +1059,17 @@
     // ── 지도 화면 범위 ── 지표 통계는 '지금 화면에 들어와 있는 사례'로만 낸다
     function viewBox() {
         if (!KM) return null;
+        // 지도가 실제로 그려지지 않은 상태(숨은 탭·접힌 패널 등)에서는 범위를 제한하지 않는다.
+        //   컨테이너가 0 이면 getBounds() 가 엉뚱한 값을 줘 통계가 통째로 비어버린다.
+        var el = document.getElementById('kakao-map');
+        if (!el || el.clientWidth < 80 || el.clientHeight < 80) return null;
         var b = KM.getBounds();
         if (!b) return null;
         var sw = b.getSouthWest(), ne = b.getNorthEast();
-        return {s: sw.getLat(), w: sw.getLng(), n: ne.getLat(), e: ne.getLng()};
+        var vb = {s: sw.getLat(), w: sw.getLng(), n: ne.getLat(), e: ne.getLng()};
+        if (!isFinite(vb.s) || !isFinite(vb.n) || !isFinite(vb.w) || !isFinite(vb.e)) return null;
+        if (!(vb.n > vb.s) || !(vb.e > vb.w)) return null;          // 축퇴된 범위
+        return vb;
     }
     function inBox(x, vb) {
         if (!vb) return true;                       // 지도 없으면 제한하지 않음
@@ -1409,7 +1416,7 @@
         document.getElementById('cnt-note').innerHTML = vb
             ? '지도 화면 범위 기준 · 필터 통과 ' + sel.length.toLocaleString() + '건' +
               (noGeo ? ' (좌표 없음 ' + noGeo.toLocaleString() + '건 제외)' : '')
-            : '';
+            : '지도 미표시 — 필터 전체 기준';
         renderStats(vis.filter(function (x) { return x.t !== 3; }));
         renderMarkers();
         // 지표 결측으로 빠진 건수를 숨기지 않고 표시
