@@ -1190,6 +1190,18 @@
     if (KM) {
         kakao.maps.event.addListener(KM, 'idle', updateLayerMode);
         kakao.maps.event.addListener(KM, 'zoom_changed', updateLayerMode);
+        // 창 크기·표시 상태가 바뀌면 지도 내부 크기를 다시 잡아준다.
+        //   이걸 빠뜨리면 getBounds() 가 옛 크기로 계산돼 화면 범위 통계가 어긋난다.
+        var rlTimer = null;
+        function relayoutSoon() {
+            clearTimeout(rlTimer);
+            rlTimer = setTimeout(function () {
+                KM.relayout();
+                refreshView();
+            }, 150);
+        }
+        window.addEventListener('resize', relayoutSoon);
+        document.addEventListener('visibilitychange', relayoutSoon);
     }
 
     function renderMapAndList() {
@@ -2085,9 +2097,14 @@
 
     // 첫 화면: 데이터 전체 범위로
     if (KM) {
-        var kb = new kakao.maps.LatLngBounds();
-        Object.keys(CENTERS).forEach(function (k) { kb.extend(KLL(CENTERS[k])); });
-        if (!kb.isEmpty()) KM.setBounds(kb, 40);
+        var fitAll = function () {
+            KM.relayout();                       // 컨테이너 실제 크기 반영 후
+            var kb = new kakao.maps.LatLngBounds();
+            Object.keys(CENTERS).forEach(function (k) { kb.extend(KLL(CENTERS[k])); });
+            if (!kb.isEmpty()) KM.setBounds(kb, 40);
+        };
+        fitAll();
+        setTimeout(fitAll, 400);                 // 레이아웃이 늦게 잡히는 경우 대비
     }
 })();
 </script>
