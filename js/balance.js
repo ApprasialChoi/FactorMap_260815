@@ -17,6 +17,7 @@
     function won(v) { return v == null ? '–' : Math.round(v).toLocaleString('ko-KR'); }
     function n3(v) { return v == null ? '–' : String(+Number(v).toFixed(3)); }
     function n2(v) { return v == null ? '–' : Number(v).toFixed(2); }
+    function n5(v) { return v == null ? '–' : String(+Number(v).toFixed(5)); }
     function area(v) { return v == null ? '–' : Number(v).toLocaleString('ko-KR', {maximumFractionDigits: 1}); }
     function zshort(z) {
         return String(z).replace('제', '').replace('일반주거지역', '일주').replace('전용주거지역', '전주')
@@ -299,7 +300,7 @@
                 '<div class="l1"><b>[' + esc(r.no) + ']</b> ' + esc(META.zones[r.z]) + ' · 사정 ' + area(r.ar2) + '㎡' +
                     ' · <span class="dec">' + won(r.dec) + '</span><small>원/㎡</small> · 평가액 ' + won(r.amt) + '</div>' +
                 '<div class="l2">공시지가 ' + esc((r.sk ? r.sk + ' ' : '') + r.sa + ' ' + r.sj) + ' · ' + won(r.sg) + '원</div>' +
-                '<div class="l2">시점 ' + n3(r.tm) + ' × 지역 ' + n3(r.rg) + ' × 개별 ' + r.f.map(n3).join('·') + ' = ' + n3(r.ft) +
+                '<div class="l2">시점 ' + n5(r.tm) + ' × 지역 ' + n3(r.rg) + ' × 개별 ' + r.f.map(n3).join('·') + ' = ' + n3(r.ft) +
                     ' × 기타 ' + n2(r.oth) + ' → 산정 ' + won(r.calc) + '</div>' +
                 (on ? '' : '<div class="l3">현재 필터에서 제외된 행</div>') + '</div>';
         });
