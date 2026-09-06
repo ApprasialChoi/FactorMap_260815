@@ -284,6 +284,51 @@
         content: ''; position: absolute; left: 50%; bottom: -7px; margin-left: -7px;
         border: 7px solid transparent; border-bottom: none; border-top-color: #fff;
     }
+
+    /* ===== 모드 탭 · 본건 균형검토 ===== */
+    #mode-tabs { display: flex; background: #1a365d; padding: 0 12px; gap: 4px; }
+    #mode-tabs .mt {
+        flex: 1; padding: 8px 6px 7px; text-align: center; font-size: 12px; font-weight: 700;
+        color: rgba(255,255,255,.7); cursor: pointer; border-bottom: 3px solid transparent; user-select: none;
+    }
+    #mode-tabs .mt:hover { color: #fff; }
+    #mode-tabs .mt.on { color: #fff; border-bottom-color: #fbd38d; }
+    #bal-scroll { flex: 1; overflow-y: auto; }
+    .bal-f { display: grid; grid-template-columns: 34px 1fr; gap: 4px 6px; align-items: start; margin-bottom: 4px; }
+    .bal-f > span { font-size: 10.5px; font-weight: 700; color: #718096; padding-top: 5px; }
+    #bal-scroll .chip { padding: 3px 8px; font-size: 10.5px; }
+    table.bal-mx { width: 100%; border-collapse: collapse; font-size: 10.5px; table-layout: fixed; margin-bottom: 8px; }
+    .bal-mx th { color: #718096; font-weight: 700; padding: 3px 2px; text-align: center; background: #f7fafc; }
+    .bal-mx tr th:first-child { text-align: left; width: 60px; white-space: nowrap; font-size: 10px; }
+    .bal-mx td.mx { border: 1px solid #edf2f7; padding: 3px 2px; text-align: center; cursor: pointer; line-height: 1.25; }
+    .bal-mx td.mx b { display: block; color: #1a365d; font-variant-numeric: tabular-nums; }
+    .bal-mx td.mx small { color: #a0aec0; font-size: 9px; }
+    .bal-mx td.mx:hover { background: #f0f7ff; }
+    .bal-mx td.mx.sel { background: #e6f0fd; outline: 2px solid #0051af; outline-offset: -2px; }
+    .bal-mx td.mx.empty { background: #fafafa; cursor: default; }
+    .bal-mx td.none { padding: 12px; text-align: center; color: #a0aec0; }
+    .bal-lbl {
+        background: rgba(255,255,255,.94); border: 1.5px solid #2563eb; border-radius: 5px; padding: 1px 5px;
+        font-size: 10.5px; font-weight: 800; color: #1a365d; white-space: nowrap; font-variant-numeric: tabular-nums;
+        cursor: pointer; box-shadow: 0 1px 4px rgba(15,23,42,.25);
+    }
+    #bal-legend {
+        position: absolute; right: 12px; bottom: 28px; z-index: 1200; background: rgba(255,255,255,.96);
+        border: 1.5px solid rgba(26,54,93,.2); border-radius: 8px; padding: 8px 10px; font-size: 11px;
+        color: #2d3748; box-shadow: 0 2px 8px rgba(15,23,42,.15);
+    }
+    #bal-legend b { display: block; font-size: 11px; color: #1a365d; margin-bottom: 4px; }
+    .lg-row { display: flex; align-items: center; gap: 6px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+    .lg-sw { width: 14px; height: 10px; border-radius: 2px; display: inline-block; }
+    .lg-sub, .lg-none { font-size: 9.5px; color: #a0aec0; margin-top: 3px; }
+    .fm-pop.bal { width: 400px; max-height: 60vh; overflow-y: auto; }
+    .fm-pop.bal h4 small { font-weight: 600; color: #718096; font-size: 11px; }
+    .bal-row { margin-top: 6px; padding-top: 5px; border-top: 1px dashed #cbd5e0; font-size: 11px; line-height: 1.5; }
+    .bal-row .l1 .dec { font-size: 13px; font-weight: 800; color: #0051af; font-variant-numeric: tabular-nums; }
+    .bal-row .l1 small { color: #718096; }
+    .bal-row .l2 { color: #4a5568; font-size: 10.5px; }
+    .bal-row .l3 { color: #c05621; font-size: 10px; font-weight: 700; }
+    .bal-row.off { opacity: .55; }
 </style>
 </head>
 <body>
@@ -291,10 +336,15 @@
 <div id="side-panel">
     <div class="panel-header">
         <h1>📊 그밖의요인 통계맵</h1>
-        <div class="subtitle">개공비율(사례단가 ÷ 개별공시지가) 기반 · 해남·영암·무안</div>
-        <div class="panel-count">선택 <b id="cnt-sel">0</b>건 / 전체 <span id="cnt-all">0</span>건
+        <div class="subtitle" id="subtitle">개공비율(사례단가 ÷ 개별공시지가) 기반 · 해남·영암·무안</div>
+        <div class="panel-count" id="case-count">선택 <b id="cnt-sel">0</b>건 / 전체 <span id="cnt-all">0</span>건
             <div id="cnt-note" style="font-size:10.5px; opacity:.85; font-weight:600; margin-top:2px;"></div>
         </div>
+        <div class="panel-count" id="bal-count" style="display:none;"></div>
+    </div>
+    <div id="mode-tabs">
+        <div class="mt on" id="tab-case">그밖의요인 · 사례</div>
+        <div class="mt" id="tab-bal">본건 균형검토</div>
     </div>
     <div id="panel-scroll">
         <div class="filter-section">
@@ -392,6 +442,87 @@
         </div>
         <div id="ri-list"></div>
     </div>
+
+    <!-- ── 본건 균형검토 (별첨1. 공시지가) — js/balance.js ── -->
+    <div id="bal-scroll" style="display:none;">
+        <div class="filter-section">
+            <label>블록</label>
+            <div class="filter-row" id="b-blk"></div>
+        </div>
+        <div class="filter-section">
+            <label>리</label>
+            <div class="filter-row" id="b-ri"></div>
+        </div>
+        <div class="filter-section">
+            <label>용도지역 <small>— 미선택 시 전체</small></label>
+            <div class="filter-row" id="b-zone"></div>
+        </div>
+        <div class="filter-section">
+            <label>이용상황 <small>— 지목 그룹</small></label>
+            <div class="filter-row" id="b-use"></div>
+        </div>
+        <div class="filter-section">
+            <label>지목</label>
+            <div class="filter-row" id="b-jm"></div>
+        </div>
+        <div class="filter-section">
+            <label>개별요인 <small>— 항목별 값 선택 · 누계는 범위</small></label>
+            <div class="bal-f"><span>가로</span><div class="filter-row" id="b-f0"></div></div>
+            <div class="bal-f"><span>접근</span><div class="filter-row" id="b-f1"></div></div>
+            <div class="bal-f"><span>환경</span><div class="filter-row" id="b-f2"></div></div>
+            <div class="bal-f"><span>획지</span><div class="filter-row" id="b-f3"></div></div>
+            <div class="bal-f"><span>행정</span><div class="filter-row" id="b-f4"></div></div>
+            <div class="bal-f"><span>기타</span><div class="filter-row" id="b-f5"></div></div>
+            <div class="rng-row" style="margin-top:4px;">
+                <span style="font-size:10.5px; font-weight:700; color:#718096;">누계</span>
+                <input type="number" id="b-ftmin" placeholder="최소" step="0.01" min="0">
+                <span>~</span>
+                <input type="number" id="b-ftmax" placeholder="최대" step="0.01" min="0">
+            </div>
+        </div>
+        <div class="filter-section">
+            <label>기타요인</label>
+            <div class="filter-row" id="b-oth"></div>
+        </div>
+        <div class="filter-section">
+            <label>결정단가 범위 <small>— 원/㎡ · 비우면 제한 없음</small></label>
+            <div class="rng-row">
+                <input type="number" id="b-decmin" placeholder="최소" min="0" step="1000">
+                <span>~</span>
+                <input type="number" id="b-decmax" placeholder="최대" min="0" step="1000">
+            </div>
+            <div class="stat-sub" id="b-dec-note" style="margin-top:5px;"></div>
+        </div>
+        <div class="filter-section">
+            <label>평가액 범위 <small>— 원 · 행 기준</small></label>
+            <div class="rng-row">
+                <input type="number" id="b-amtmin" placeholder="최소" min="0" step="1000000">
+                <span>~</span>
+                <input type="number" id="b-amtmax" placeholder="최대" min="0" step="1000000">
+            </div>
+            <div class="stat-sub" id="b-amt-note" style="margin-top:5px;"></div>
+        </div>
+        <div class="filter-section">
+            <div class="filter-row" id="b-opt" style="margin-bottom:7px;"></div>
+            <div class="dl-row">
+                <button class="btn" id="b-reset">필터 초기화</button>
+                <button class="btn" id="b-fit">전체 범위</button>
+                <button class="btn primary" id="b-xlsx">엑셀(.xlsx)</button>
+            </div>
+        </div>
+        <div class="stat-section">
+            <div class="stat-title">용도지역 × 이용상황 — 평균 결정단가 (원/㎡)</div>
+            <table class="bal-mx" id="b-mx-dec"></table>
+            <div class="stat-title">용도지역 × 이용상황 — 기타요인</div>
+            <table class="bal-mx" id="b-mx-oth"></table>
+            <div class="stat-sub">용도지역·이용상황 필터를 뺀 조건으로 집계(단순평균) · 칸을 누르면 그 조합만 지도에 표시</div>
+        </div>
+        <div class="filter-section" style="border-bottom:none; padding-bottom:4px;">
+            <label id="b-list-head">결정단가 상위 필지</label>
+        </div>
+        <div id="b-list"></div>
+        <div class="stat-sub" id="b-src" style="padding:8px 16px 14px;"></div>
+    </div>
 </div>
 
 <div id="add-modal" style="position:fixed; inset:0; background:rgba(15,23,42,.45); z-index:5200; display:none; align-items:center; justify-content:center;">
@@ -414,7 +545,9 @@
     <button id="btn-cadastral" title="카카오맵 지적편집도 — 용도지역 색상 표시">🗺️ 지적편집도(용도지역)</button>
     <button id="btn-hybrid" title="위성 + 라벨">🛰️ 위성</button>
     <button id="btn-lbl-reset" title="드래그로 옮긴 라벨을 모두 제자리로" style="display:none;">↺ 라벨 위치 초기화</button>
+    <button id="btn-bal-label" title="확대 시 필지 위에 결정단가 표시" style="display:none;">🔢 단가 라벨</button>
 </div>
+<div id="bal-legend" style="display:none;"></div>
 
 <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=231190ac1aca72ada0b739110d8a0eb4&libraries=services"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -422,6 +555,7 @@
 <script src="data/boundaries.js?v=202608262157"></script>
 <script src="data/parcels.js?v=202608262157"></script>
 <script src="data/cart_shared.js?v=202608262157"></script>
+<script src="data/balance.js?v=202609070849"></script>
 <script>
 (function () {
     'use strict';
@@ -728,14 +862,15 @@
     function KLL(a) { return new kakao.maps.LatLng(a[0], a[1]); }
     function clearOvs(arr) { arr.forEach(function (o) { o.setMap(null); }); arr.length = 0; }
     var pillOvs = [], boundPolys = [], vmOvs = [], infoOv = null;
+    var HIDE_CASES = false;            // 본건 균형검토 모드 — 사례 마커·리 pill·리 경계를 숨긴다
 
     var INFO_X = null, INFO_POS = null;
-    function showInfo(pos, html, x) {
+    function showInfo(pos, html, x, cls) {
         INFO_X = x || null;
         INFO_POS = pos;
         if (infoOv) { infoOv.setMap(null); infoOv = null; }
         var el = document.createElement('div');
-        el.className = 'fm-pop';
+        el.className = 'fm-pop' + (cls ? ' ' + cls : '');
         el.innerHTML = html + '<span class="fm-pop-x">✕</span>';
         el.querySelector('.fm-pop-x').onclick = function () { infoOv.setMap(null); infoOv = null; };
         wireCartBtn(el);
@@ -772,6 +907,7 @@
     function renderBounds() {
         if (!KM) return;
         clearOvs(boundPolys);
+        if (HIDE_CASES) return;
         var by = riAgg();                       // 현재 속성 필터에서 데이터가 있는 리
         Object.keys(BOUNDS).forEach(function (k) {
             if (!by[k]) return;
@@ -1086,6 +1222,7 @@
     function renderMarkers() {
         if (!KM) return;
         clearOvs(vmOvs);
+        if (HIDE_CASES) return;
         if (!CART_ONLY && KM.getLevel() > VM_LEVEL) return;   // 선정만 모드는 축소해도 마커
         var bd = KM.getBounds();
         var cand = [];
@@ -1205,7 +1342,7 @@
 
     function updateLayerMode() {
         if (!KM) return;
-        var showPills = !CART_ONLY && KM.getLevel() > VM_LEVEL;
+        var showPills = !CART_ONLY && !HIDE_CASES && KM.getLevel() > VM_LEVEL;
         pillOvs.forEach(function (o) { o.setMap(showPills ? KM : null); });
         refreshView();                 // 화면이 바뀌면 지표 통계도 다시 낸다
     }
@@ -1265,7 +1402,7 @@
                 };
                 var pill = new kakao.maps.CustomOverlay({position: KLL(ll), content: pel,
                     yAnchor: 0.5, xAnchor: 0.5, zIndex: 10, clickable: true});
-                if (!CART_ONLY && KM.getLevel() > VM_LEVEL) pill.setMap(KM);
+                if (!CART_ONLY && !HIDE_CASES && KM.getLevel() > VM_LEVEL) pill.setMap(KM);
                 pillOvs.push(pill);
             }
             var it = document.createElement('div');
@@ -2123,7 +2260,18 @@
         fitAllMap();
         setTimeout(fitAllMap, 400);              // 레이아웃이 늦게 잡히는 경우 대비
     }
+
+    // ── 외부 모듈(js/balance.js 본건 균형검토)용 최소 인터페이스 ──
+    window.FM = {
+        get map() { return KM; },
+        KLL: KLL,
+        showInfo: showInfo,
+        closeInfo: function () { if (infoOv) { infoOv.setMap(null); infoOv = null; INFO_X = null; } },
+        setCasesHidden: function (h) { HIDE_CASES = !!h; refresh(); },
+        onMapIdle: function (fn) { if (KM) kakao.maps.event.addListener(KM, 'idle', fn); }
+    };
 })();
 </script>
+<script src="js/balance.js?v=202609070849"></script>
 </body>
 </html>
