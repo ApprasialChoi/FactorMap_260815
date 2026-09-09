@@ -215,6 +215,68 @@
         return out;
     }
 
+    // ───────── 라벨 드래그 (오프셋은 필지 키별로 브라우저에 저장) ─────────
+    var BOFF = {}, BDRAG_AT = 0;
+    try { BOFF = JSON.parse(localStorage.getItem('fmBalOff1') || '{}') || {}; } catch (e) { BOFF = {}; }
+    function saveBOff() { try { localStorage.setItem('fmBalOff1', JSON.stringify(BOFF)); } catch (e) {} }
+    function syncBResetBtn() {
+        var b = byId('btn-bal-lbl-reset');
+        if (b) b.style.display = (ON && Object.keys(BOFF).length) ? '' : 'none';
+    }
+    function applyBOff(rec, off) {
+        rec.off = off || [0, 0];
+        var dx = rec.off[0], dy = rec.off[1];
+        rec.el.style.transform = (dx || dy) ? 'translate(' + dx + 'px,' + dy + 'px)' : '';
+        if (!dx && !dy) { rec.lead.style.display = 'none'; rec.anch.style.display = 'none'; return; }
+        // 래퍼 좌표계 — 앵커점 = 라벨 중심(xAnchor·yAnchor 0.5), 옮긴 라벨 중심 = 앵커 + (dx, dy)
+        var w = rec.el.offsetWidth || 70, h = rec.el.offsetHeight || 30;
+        var ax = w / 2, ay = h / 2;
+        var len = Math.sqrt(dx * dx + dy * dy);
+        rec.lead.style.display = 'block';
+        rec.lead.style.left = ax + 'px';
+        rec.lead.style.top = ay + 'px';
+        rec.lead.style.width = len + 'px';
+        rec.lead.style.transform = 'rotate(' + Math.atan2(dy, dx) + 'rad)';
+        rec.anch.style.display = 'block';
+        rec.anch.style.left = ax + 'px';
+        rec.anch.style.top = ay + 'px';
+    }
+    function wireBDrag(rec) {
+        rec.el.addEventListener('pointerdown', function (ev) {
+            if (ev.button != null && ev.button !== 0) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            var m = map(), sx = ev.clientX, sy = ev.clientY;
+            var base = (rec.off || [0, 0]).slice(), moved = false;
+            try { rec.el.setPointerCapture(ev.pointerId); } catch (e) {}
+            if (m && m.setDraggable) m.setDraggable(false);
+            rec.ov.setZIndex(90);
+            rec.el.classList.add('dragging');
+            function mv(e2) {
+                var dx = e2.clientX - sx, dy = e2.clientY - sy;
+                if (!moved && Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+                if (moved) applyBOff(rec, [base[0] + dx, base[1] + dy]);
+            }
+            function up() {
+                rec.el.removeEventListener('pointermove', mv);
+                rec.el.removeEventListener('pointerup', up);
+                rec.el.removeEventListener('pointercancel', up);
+                rec.el.classList.remove('dragging');
+                if (m && m.setDraggable) m.setDraggable(true);
+                rec.ov.setZIndex(8);
+                if (moved) {
+                    BOFF[rec.p.k] = rec.off;
+                    saveBOff();
+                    syncBResetBtn();
+                    BDRAG_AT = Date.now();
+                }
+            }
+            rec.el.addEventListener('pointermove', mv);
+            rec.el.addEventListener('pointerup', up);
+            rec.el.addEventListener('pointercancel', up);
+        });
+    }
+
     // ───────── 지도 ─────────
     var PG = {}, SHOWN = {}, LBL = [];
     function ensurePG(p) {
@@ -258,17 +320,38 @@
                 if (p._dec == null) return;
                 var r = p._rep, n = p._rows.length;
                 var el = document.createElement('div');
-                el.className = 'bal-lbl';
-                el.style.borderColor = colorOf(p._dec);
-                // 1줄 연번 ↔ 소재지+지번 · 2줄 용도지역 ↔ 지대 (양끝 정렬로 폭을 채움) · 3줄 결정단가 하나
-                el.innerHTML = '<div class="bl-top"><b>' + esc(r.no) + (n > 1 ? '<i>+' + (n - 1) + '</i>' : '') + '</b>' +
-                        '<span>' + esc(shortAddr(p.a)) + '</span></div>' +
-                    '<div class="bl-mid" style="background:' + colorOf(p._dec) + '"><span>' + esc(zshort(META.zones[r.z])) +
-                        '</span><span class="u">' + esc(META.uses[r.u]) + '</span></div>' +
-                    '<div class="bl-bot">' + won(p._dec) + '<small>원/㎡</small></div>';
-                el.onclick = function () { openPopup(p); };
-                var ov = new kakao.maps.CustomOverlay({position: KLL(p.poly.c), content: el, yAnchor: .5, xAnchor: .5, zIndex: 8, clickable: true});
+                var col = colorOf(p._dec);
+                var noHtml = '<b>' + esc(r.no) + (n > 1 ? '<i>+' + (n - 1) + '</i>' : '') + '</b>';
+                if (lv >= 5) {
+                    // 레벨 5~6 (축척 250m·500m): 연번 · 단가 한 줄 축약형
+                    el.className = 'bal-lbl mini';
+                    el.style.borderColor = col;
+                    el.innerHTML = noHtml + '<span style="color:' + col + '">' + won(p._dec) + '</span>';
+                } else {
+                    // 레벨 4 이하: 1줄 연번 ↔ 소재지+지번 · 2줄 용도지역 ↔ 지대 (양끝 정렬) · 3줄 결정단가
+                    el.className = 'bal-lbl';
+                    el.style.borderColor = col;
+                    el.innerHTML = '<div class="bl-top">' + noHtml + '<span>' + esc(shortAddr(p.a)) + '</span></div>' +
+                        '<div class="bl-mid" style="background:' + col + '"><span>' + esc(zshort(META.zones[r.z])) +
+                            '</span><span class="u">' + esc(META.uses[r.u]) + '</span></div>' +
+                        '<div class="bl-bot">' + won(p._dec) + '<small>원/㎡</small></div>';
+                }
+                el.onclick = function () {
+                    if (Date.now() - BDRAG_AT < 250) return;     // 드래그 끝의 클릭은 무시
+                    openPopup(p);
+                };
+                // 래퍼 + 지시선·앵커점: 라벨을 끌어 옮기면 원래 필지 중심과 점선으로 잇는다 (사례 라벨과 동일)
+                var wrap = document.createElement('div');
+                wrap.className = 'vm-wrap';
+                wrap.appendChild(el);
+                var lead = document.createElement('div'); lead.className = 'vm-lead';
+                var anch = document.createElement('div'); anch.className = 'vm-anch';
+                wrap.appendChild(lead); wrap.appendChild(anch);
+                var ov = new kakao.maps.CustomOverlay({position: KLL(p.poly.c), content: wrap, yAnchor: .5, xAnchor: .5, zIndex: 8, clickable: true});
                 ov.setMap(m);
+                var rec = {p: p, el: el, ov: ov, lead: lead, anch: anch, off: [0, 0]};
+                applyBOff(rec, BOFF[p.k]);
+                wireBDrag(rec);
                 LBL.push(ov);
             });
         }
@@ -434,6 +517,7 @@
             : '개공비율(사례단가 ÷ 개별공시지가) 기반 · 해남·영암·무안';
         byId('btn-bal-label').style.display = on ? '' : 'none';
         byId('bal-legend').style.display = on ? '' : 'none';
+        syncBResetBtn();
         if (FM.closeInfo) FM.closeInfo();
         if (FM.setCasesHidden) FM.setCasesHidden(on);
         if (on) {
@@ -465,6 +549,12 @@
         renderMap();
     };
     byId('btn-bal-label').classList.add('on');
+    byId('btn-bal-lbl-reset').onclick = function () {
+        BOFF = {};
+        saveBOff();
+        syncBResetBtn();
+        renderMap();
+    };
     byId('tab-case').onclick = function () { if (ON) setMode(false); };
     byId('tab-bal').onclick = function () { if (!ON) setMode(true); };
     if (FM.onMapIdle) FM.onMapIdle(function () { if (ON) renderMap(); });

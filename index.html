@@ -309,18 +309,24 @@
     .bal-mx td.none { padding: 12px; text-align: center; color: #a0aec0; }
     /* 본건 라벨 — 3단: 연번 ↔ 소재지 / 용도지역 ↔ 지대 (양끝 정렬) / 결정단가 (가운데) */
     .bal-lbl {
-        background: #fff; border: 1.5px solid #2563eb; border-radius: 6px; overflow: hidden;
-        font-size: 10px; line-height: 1.3; color: #1a365d; white-space: nowrap; cursor: pointer;
-        box-shadow: 0 2px 6px rgba(15,23,42,.28); font-variant-numeric: tabular-nums;
+        background: #fff; border: 1px solid #2563eb; border-radius: 4px; overflow: hidden;
+        font-size: 8.5px; line-height: 1.2; color: #1a365d; white-space: nowrap; cursor: grab;
+        box-shadow: 0 1px 4px rgba(15,23,42,.25); font-variant-numeric: tabular-nums;
+        position: relative; z-index: 2; touch-action: none; user-select: none;
     }
-    .bal-lbl .bl-top, .bal-lbl .bl-mid { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-    .bal-lbl .bl-top { padding: 1px 6px; background: #f1f5f9; color: #334155; font-weight: 700; border-bottom: 1px solid #e2e8f0; }
+    .bal-lbl.dragging { cursor: grabbing; box-shadow: 0 5px 14px rgba(15,23,42,.4); opacity: .92; }
+    .bal-lbl .bl-top, .bal-lbl .bl-mid { display: flex; justify-content: space-between; align-items: center; gap: 7px; }
+    .bal-lbl .bl-top { padding: 0 4px; background: #f1f5f9; color: #334155; font-weight: 700; border-bottom: 1px solid #e2e8f0; }
     .bal-lbl .bl-top b { color: #0051af; }
     .bal-lbl .bl-top i { font-style: normal; color: #0051af; font-weight: 800; margin-left: 1px; }
-    .bal-lbl .bl-mid { padding: 1px 6px; color: #fff; font-weight: 700; }
-    .bal-lbl .bl-mid .u { background: rgba(0,0,0,.18); padding: 0 4px; border-radius: 3px; font-size: 9.5px; }
-    .bal-lbl .bl-bot { padding: 1px 6px 2px; font-weight: 800; text-align: center; font-size: 11px; }
-    .bal-lbl .bl-bot small { font-weight: 600; color: #718096; margin-left: 1px; font-size: 9px; }
+    .bal-lbl .bl-mid { padding: 0 4px; color: #fff; font-weight: 700; }
+    .bal-lbl .bl-mid .u { background: rgba(0,0,0,.18); padding: 0 3px; border-radius: 2px; font-size: 8px; }
+    .bal-lbl .bl-bot { padding: 0 4px 1px; font-weight: 800; text-align: center; font-size: 9.5px; }
+    .bal-lbl .bl-bot small { font-weight: 600; color: #718096; margin-left: 1px; font-size: 7.5px; }
+    /* 레벨 5~6 축약형: 연번 · 단가 한 줄 */
+    .bal-lbl.mini { padding: 0 4px; font-size: 8.5px; font-weight: 800; display: flex; gap: 4px; align-items: center; }
+    .bal-lbl.mini b { color: #0051af; }
+    .bal-lbl.mini i { font-style: normal; color: #0051af; font-weight: 800; }
     #bal-legend {
         position: absolute; right: 12px; bottom: 28px; z-index: 1200; background: rgba(255,255,255,.96);
         border: 1.5px solid rgba(26,54,93,.2); border-radius: 8px; padding: 8px 10px; font-size: 11px;
@@ -555,6 +561,7 @@
     <button id="btn-hybrid" title="위성 + 라벨">🛰️ 위성</button>
     <button id="btn-lbl-reset" title="드래그로 옮긴 라벨을 모두 제자리로" style="display:none;">↺ 라벨 위치 초기화</button>
     <button id="btn-bal-label" title="확대 시 필지 위에 결정단가 표시" style="display:none;">🔢 단가 라벨</button>
+    <button id="btn-bal-lbl-reset" title="드래그로 옮긴 본건 라벨을 모두 제자리로" style="display:none;">↺ 라벨 위치 초기화</button>
 </div>
 <div id="bal-legend" style="display:none;"></div>
 
@@ -564,7 +571,7 @@
 <script src="data/boundaries.js?v=202608262157"></script>
 <script src="data/parcels.js?v=202608262157"></script>
 <script src="data/cart_shared.js?v=202608262157"></script>
-<script src="data/balance.js?v=202609091545"></script>
+<script src="data/balance.js?v=202609091646"></script>
 <script>
 (function () {
     'use strict';
@@ -2281,6 +2288,6 @@
     };
 })();
 </script>
-<script src="js/balance.js?v=202609091545"></script>
+<script src="js/balance.js?v=202609091646"></script>
 </body>
 </html>
