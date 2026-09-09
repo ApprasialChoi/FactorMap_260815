@@ -44,6 +44,7 @@
     var BS = {blk: {}, jm: {}, zone: {}, use: {}, ri: {}, f: [{}, {}, {}, {}, {}, {}], oth: {},
               ftMin: 0, ftMax: 0, decMin: 0, decMax: 0, amtMin: 0, amtMax: 0, nodec: false};
     var ON = false, LABELS = true, FIT_DONE = false;
+    var LBL_LEVEL = 6, LBL_CAP = 900;        // 카카오 레벨 6 = 축척 500m · 라벨 상한
     var COLORS = ['#2563eb', '#0891b2', '#16a34a', '#d97706', '#dc2626'];
     var BINS = [], SEL = [], SELP = [];
 
@@ -252,21 +253,19 @@
             vis.push(p);
         });
         clearLabels();
-        if (LABELS && lv <= 3) {
-            vis.slice(0, 400).forEach(function (p) {
+        if (LABELS && lv <= LBL_LEVEL) {
+            vis.slice(0, LBL_CAP).forEach(function (p) {
                 if (p._dec == null) return;
                 var r = p._rep, n = p._rows.length;
-                var tot = p._rows.reduce(function (s, x) { return s + (x.amt || 0); }, 0);
                 var el = document.createElement('div');
                 el.className = 'bal-lbl';
                 el.style.borderColor = colorOf(p._dec);
-                // 연번 · 소재지+지번 / 용도지역 · 지대 / 결정단가 · 평가금액 (사례 마커와 같은 3단 구성)
-                el.innerHTML = '<div class="bl-top"><b>' + esc(r.no) + '</b> ' + esc(shortAddr(p.a)) +
-                        (n > 1 ? ' <i>+' + (n - 1) + '</i>' : '') + '</div>' +
-                    '<div class="bl-mid" style="background:' + colorOf(p._dec) + '">' + esc(zshort(META.zones[r.z])) +
-                        '<span>' + esc(META.uses[r.u]) + '</span></div>' +
-                    '<div class="bl-bot"><b>' + won(p._dec) + '</b><small>원/㎡</small> · ' +
-                        (n > 1 ? '<small>합</small>' : '') + won(tot) + '</div>';
+                // 1줄 연번 ↔ 소재지+지번 · 2줄 용도지역 ↔ 지대 (양끝 정렬로 폭을 채움) · 3줄 결정단가 하나
+                el.innerHTML = '<div class="bl-top"><b>' + esc(r.no) + (n > 1 ? '<i>+' + (n - 1) + '</i>' : '') + '</b>' +
+                        '<span>' + esc(shortAddr(p.a)) + '</span></div>' +
+                    '<div class="bl-mid" style="background:' + colorOf(p._dec) + '"><span>' + esc(zshort(META.zones[r.z])) +
+                        '</span><span class="u">' + esc(META.uses[r.u]) + '</span></div>' +
+                    '<div class="bl-bot">' + won(p._dec) + '<small>원/㎡</small></div>';
                 el.onclick = function () { openPopup(p); };
                 var ov = new kakao.maps.CustomOverlay({position: KLL(p.poly.c), content: el, yAnchor: .5, xAnchor: .5, zIndex: 8, clickable: true});
                 ov.setMap(m);
@@ -275,7 +274,8 @@
         }
         var note = byId('b-vis');
         if (note) note.textContent = '화면 표시 ' + vis.length.toLocaleString() + '필지' +
-            (lv > 3 && LABELS ? ' · 단가 라벨은 확대(레벨 3 이하) 시 표시' : '');
+            (LABELS ? (lv > LBL_LEVEL ? ' · 라벨은 500m 축척(레벨 ' + LBL_LEVEL + ') 이하에서 표시'
+                               : (vis.length > LBL_CAP ? ' · 라벨 ' + LBL_CAP + '개까지만 표시' : '')) : '');
     }
     function fitBal() {
         var m = map();
