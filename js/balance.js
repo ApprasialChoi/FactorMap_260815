@@ -25,6 +25,7 @@
             .replace('준공업지역', '준공').replace('일반공업지역', '일공').replace('자연녹지지역', '자연녹지')
             .replace('생산녹지지역', '생산녹지').replace('계획관리지역', '계관').replace('지역', '');
     }
+    function shortAddr(a) { var t = String(a || '').split(' '); return t.length >= 3 ? t.slice(1).join(' ') : a; }   // '산이면 대진리 246' → '대진리 246'
     function mean(a) { return a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : null; }
     function quant(a, p) { if (!a.length) return NaN; var i = (a.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i);
         return a[lo] + (a[hi] - a[lo]) * (i - lo); }
@@ -252,12 +253,20 @@
         });
         clearLabels();
         if (LABELS && lv <= 3) {
-            vis.slice(0, 700).forEach(function (p) {
+            vis.slice(0, 400).forEach(function (p) {
                 if (p._dec == null) return;
+                var r = p._rep, n = p._rows.length;
+                var tot = p._rows.reduce(function (s, x) { return s + (x.amt || 0); }, 0);
                 var el = document.createElement('div');
                 el.className = 'bal-lbl';
                 el.style.borderColor = colorOf(p._dec);
-                el.textContent = won(p._dec);
+                // 연번 · 소재지+지번 / 용도지역 · 지대 / 결정단가 · 평가금액 (사례 마커와 같은 3단 구성)
+                el.innerHTML = '<div class="bl-top"><b>' + esc(r.no) + '</b> ' + esc(shortAddr(p.a)) +
+                        (n > 1 ? ' <i>+' + (n - 1) + '</i>' : '') + '</div>' +
+                    '<div class="bl-mid" style="background:' + colorOf(p._dec) + '">' + esc(zshort(META.zones[r.z])) +
+                        '<span>' + esc(META.uses[r.u]) + '</span></div>' +
+                    '<div class="bl-bot"><b>' + won(p._dec) + '</b><small>원/㎡</small> · ' +
+                        (n > 1 ? '<small>합</small>' : '') + won(tot) + '</div>';
                 el.onclick = function () { openPopup(p); };
                 var ov = new kakao.maps.CustomOverlay({position: KLL(p.poly.c), content: el, yAnchor: .5, xAnchor: .5, zIndex: 8, clickable: true});
                 ov.setMap(m);
@@ -297,8 +306,9 @@
         p.rows.forEach(function (r) {
             var on = passRow(r, false);
             h += '<div class="bal-row' + (on ? '' : ' off') + '">' +
-                '<div class="l1"><b>[' + esc(r.no) + ']</b> ' + esc(META.zones[r.z]) + ' · 사정 ' + area(r.ar2) + '㎡' +
-                    ' · <span class="dec">' + won(r.dec) + '</span><small>원/㎡</small> · 평가액 ' + won(r.amt) + '</div>' +
+                '<div class="l1"><b>[' + esc(r.no) + ']</b> ' + esc(META.zones[r.z]) + ' · 지대 ' + esc(META.uses[r.u]) +
+                    ' · 사정 ' + area(r.ar2) + '㎡' +
+                    ' · <span class="dec">' + won(r.dec) + '</span><small>원/㎡</small> · 평가금액 ' + won(r.amt) + '</div>' +
                 '<div class="l2">공시지가 ' + esc((r.sk ? r.sk + ' ' : '') + r.sa + ' ' + r.sj) + ' · ' + won(r.sg) + '원</div>' +
                 '<div class="l2">시점 ' + n5(r.tm) + ' × 지역 ' + n3(r.rg) + ' × 개별 ' + r.f.map(n3).join('·') + ' = ' + n3(r.ft) +
                     ' × 기타 ' + n2(r.oth) + ' → 산정 ' + won(r.calc) + '</div>' +
@@ -319,7 +329,10 @@
         arr.slice(0, 120).forEach(function (p) {
             var r = p._rep, it = document.createElement('div');
             it.className = 'ri-item';
-            it.innerHTML = '<span class="nm">' + esc(p.a) + '<small>' + esc(META.jms[r.j]) + ' · ' + esc(zshort(META.zones[r.z])) +
+            var tot = p._rows.reduce(function (s, x) { return s + (x.amt || 0); }, 0);
+            it.innerHTML = '<span class="nm"><b style="color:#0051af">' + esc(r.no) + '</b> ' + esc(p.a) +
+                '<small>' + esc(zshort(META.zones[r.z])) + ' · ' + esc(META.uses[r.u]) + ' · ' + esc(META.jms[r.j]) +
+                ' · ' + (p._rows.length > 1 ? '합 ' : '') + won(tot) + '원' +
                 (p.poly ? '' : ' · <span style="color:#c05621">폴리곤 없음</span>') + '</small></span>' +
                 '<span class="md" style="color:' + colorOf(p._dec) + '">' + won(p._dec) + '</span>';
             it.onclick = function () {
@@ -352,9 +365,9 @@
     }
     function exportXlsx() {
         if (!window.XLSX) { alert('엑셀 라이브러리가 로드되지 않았습니다'); return; }
-        var hdr = ['일련번호', '소재지', '블록', '지목', '이용상황', '면적(전체)', '면적(사정)', '용도지역',
+        var hdr = ['연번', '소재지+지번', '블록', '지목', '지대(이용상황)', '면적(전체)', '면적(사정)', '용도지역',
                    '공시지가 기호', '공시지가 소재지', '공시지가 지번', '공시지가', '시점수정', '지역요인',
-                   '가로', '접근', '환경', '획지', '행정', '기타조건', '개별누계', '기타요인', '산정단가', '결정단가', '평가액', 'PNU'];
+                   '가로', '접근', '환경', '획지', '행정', '기타조건', '개별누계', '기타요인', '산정단가', '결정단가', '평가금액', 'PNU'];
         var aoa = [hdr].concat(SEL.map(function (r) {
             return [r.no, r.a, META.blocks[r.b], META.jms[r.j], META.uses[r.u], r.ar, r.ar2, META.zones[r.z],
                     r.sk, r.sa, r.sj, r.sg, r.tm, r.rg].concat(r.f).concat([r.ft, r.oth, r.calc, r.dec, r.amt, r.pnu]);

@@ -307,11 +307,19 @@
     .bal-mx td.mx.sel { background: #e6f0fd; outline: 2px solid #0051af; outline-offset: -2px; }
     .bal-mx td.mx.empty { background: #fafafa; cursor: default; }
     .bal-mx td.none { padding: 12px; text-align: center; color: #a0aec0; }
+    /* 본건 라벨 — 사례 마커(.vm)와 같은 3단: 연번·소재지 / 용도지역·지대 / 결정단가·평가금액 */
     .bal-lbl {
-        background: rgba(255,255,255,.94); border: 1.5px solid #2563eb; border-radius: 5px; padding: 1px 5px;
-        font-size: 10.5px; font-weight: 800; color: #1a365d; white-space: nowrap; font-variant-numeric: tabular-nums;
-        cursor: pointer; box-shadow: 0 1px 4px rgba(15,23,42,.25);
+        background: #fff; border: 1.5px solid #2563eb; border-radius: 6px; overflow: hidden;
+        font-size: 10px; line-height: 1.3; color: #1a365d; white-space: nowrap; cursor: pointer;
+        box-shadow: 0 2px 6px rgba(15,23,42,.28); font-variant-numeric: tabular-nums;
     }
+    .bal-lbl .bl-top { padding: 1px 6px; background: #f1f5f9; color: #334155; font-weight: 700; border-bottom: 1px solid #e2e8f0; }
+    .bal-lbl .bl-top b { color: #0051af; }
+    .bal-lbl .bl-top i { font-style: normal; color: #0051af; font-weight: 800; }
+    .bal-lbl .bl-mid { padding: 1px 6px; color: #fff; font-weight: 700; display: flex; gap: 6px; align-items: center; }
+    .bal-lbl .bl-mid span { background: rgba(0,0,0,.18); padding: 0 4px; border-radius: 3px; font-size: 9.5px; }
+    .bal-lbl .bl-bot { padding: 1px 6px 2px; font-weight: 800; }
+    .bal-lbl .bl-bot small { font-weight: 600; color: #718096; margin: 0 1px; }
     #bal-legend {
         position: absolute; right: 12px; bottom: 28px; z-index: 1200; background: rgba(255,255,255,.96);
         border: 1.5px solid rgba(26,54,93,.2); border-radius: 8px; padding: 8px 10px; font-size: 11px;
@@ -555,7 +563,7 @@
 <script src="data/boundaries.js?v=202608262157"></script>
 <script src="data/parcels.js?v=202608262157"></script>
 <script src="data/cart_shared.js?v=202608262157"></script>
-<script src="data/balance.js?v=202609070854"></script>
+<script src="data/balance.js?v=202609091538"></script>
 <script>
 (function () {
     'use strict';
@@ -2272,6 +2280,6 @@
     };
 })();
 </script>
-<script src="js/balance.js?v=202609070854"></script>
+<script src="js/balance.js?v=202609091538"></script>
 </body>
 </html>

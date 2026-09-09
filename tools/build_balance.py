@@ -17,7 +17,8 @@ import shapefile
 from pyproj import Transformer
 from shapely.geometry import Polygon
 
-SRC = r'\\server_new\공용폴더\2. 업무Part\♣해남 솔라시도\원준\★★솔라시도_v9.xlsx'
+SRC = (r'\\server_new\공용폴더\2. 업무Part\♣해남 솔라시도\★★★★★(0904) 해남 솔라시도 발송 후 최종 파일 모음'
+       r'\원준_작업 파일\★★솔라시도_v11(금호리 산1-6 토지면적 변경).xlsx')      # [260909] v9 → v11
 SHEET = '별첨1. 공시지가(일련수정)'
 SHP = r'\\server_new\공용폴더\2. 업무Part\♣해남 솔라시도\드론관련\Qfield_day1\사업지구_연속지적도'
 HERE = os.path.dirname(os.path.abspath(__file__))
